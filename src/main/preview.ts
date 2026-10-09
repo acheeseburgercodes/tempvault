@@ -2,6 +2,7 @@ import { readFile, readdir } from 'node:fs/promises'
 import { extname } from 'node:path'
 import type { FilePreview, VaultItem } from '../shared/types'
 import { VaultService } from './vault'
+import * as mammoth from 'mammoth'
 
 const TEXT_EXTENSIONS = new Set([
   '.txt', '.md', '.csv', '.tsv', '.json', '.xml', '.yml', '.yaml', '.toml', '.ini', '.log',
@@ -32,6 +33,19 @@ export async function createPreview(service: VaultService, id: string): Promise<
       content: children.slice(0, 200).map((entry) => `${entry.isDirectory() ? 'DIR ' : 'FILE'}  ${entry.name}`).join('\n'),
       truncated: children.length > 200,
       message: `${children.length} item${children.length === 1 ? '' : 's'}`
+    }
+  }
+
+  if (extension === '.docx') {
+    const result = await mammoth.extractRawText({ path: item.path })
+    const content = result.value.trim()
+    return {
+      item,
+      kind: 'text',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      content: content.slice(0, MAX_TEXT_BYTES),
+      truncated: content.length > MAX_TEXT_BYTES,
+      message: result.messages.length ? `Word preview loaded with ${result.messages.length} conversion note${result.messages.length === 1 ? '' : 's'}.` : 'Word document rendered as readable text.'
     }
   }
 
