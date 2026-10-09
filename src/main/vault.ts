@@ -148,6 +148,25 @@ export class VaultService {
     return result
   }
 
+  async moveOut(ids: string[], destinationDirectory: string): Promise<OperationResult> {
+    if (!isAbsolute(destinationDirectory)) throw new Error('Destination must be an absolute path')
+    this.assertOutsideVault(destinationDirectory)
+    const result = emptyResult()
+    const items = await this.resolveIds(ids)
+    for (const item of items) {
+      try {
+        this.assertInsideVault(item.path)
+        const destination = await this.uniquePath(join(destinationDirectory, item.name))
+        await movePath(item.path, destination)
+        result.succeeded.push(destination)
+      } catch (error) {
+        result.failed.push({ path: item.path, reason: errorMessage(error) })
+      }
+    }
+    await this.pruneEmptyDirectories()
+    return result
+  }
+
   assertInsideVault(path: string): void {
     const rel = relative(this.root, resolve(path))
     if (rel.startsWith('..') || isAbsolute(rel) || rel === '') throw new Error('Path is outside the managed vault')
