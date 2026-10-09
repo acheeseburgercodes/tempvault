@@ -65,10 +65,14 @@ const result = await evaluate(`(async () => {
       wordPreview = 'passed (' + wordText.length + ' characters)'
     }
     const floatingBefore = document.querySelectorAll('.floating-preview').length
-    widgets[0].querySelector('header button').click()
+    const sourceBounds = widgets[0].getBoundingClientRect()
+    const targetBounds = document.querySelector('.workspace').getBoundingClientRect()
+    widgets[0].dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1, buttons: 1, clientX: sourceBounds.left + 20, clientY: sourceBounds.top + 20 }))
+    window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1, buttons: 1, clientX: targetBounds.left + 180, clientY: targetBounds.top + 180 }))
+    window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1, clientX: targetBounds.left + 180, clientY: targetBounds.top + 180 }))
     await pause(100)
-    if (document.querySelectorAll('.floating-preview').length !== floatingBefore + 1) throw new Error('Detached preview did not render')
-    if (document.querySelectorAll('.preview-widget').length !== widgets.length - 1) throw new Error('Detached preview copied instead of moving')
+    if (document.querySelectorAll('.floating-preview').length !== floatingBefore + 1) throw new Error('Pointer-moved preview did not render')
+    if (document.querySelectorAll('.preview-widget').length !== widgets.length - 1) throw new Error('Pointer-moved preview copied instead of moving')
     previewCheck = 'passed'
   }
   document.querySelector('.title-actions button:last-child').click()
@@ -76,6 +80,9 @@ const result = await evaluate(`(async () => {
   const theme = document.documentElement.dataset.theme
   const background = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
   const themedSidebarStyle = getComputedStyle(document.querySelector('.sidebar'))
+  const activeNavBackground = getComputedStyle(document.querySelector('.nav-item.active')).backgroundColor
+  const bulkBackground = getComputedStyle(document.querySelector('.bulk')).backgroundColor
+  if (theme === 'light' && (activeNavBackground === 'rgb(0, 0, 0)' || bulkBackground === 'rgb(0, 0, 0)')) throw new Error('Light mode still uses black selected panels')
   document.querySelectorAll('.rail-tabs button')[1].click()
   await pause(2300)
   return {
@@ -85,6 +92,7 @@ const result = await evaluate(`(async () => {
     dockOffset,
     sidebarGlass: { background: sidebarStyle.backgroundColor, blur: sidebarStyle.backdropFilter },
     themedSidebarGlass: { background: themedSidebarStyle.backgroundColor, blur: themedSidebarStyle.backdropFilter },
+    lightSelection: { activeNavBackground, bulkBackground },
     previewCheck,
     wordPreview,
     floating: document.querySelectorAll('.floating-preview').length,

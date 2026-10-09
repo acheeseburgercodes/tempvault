@@ -149,7 +149,7 @@ export default function App(): React.JSX.Element {
 
       <aside className="right-rail" onDragOver={(event) => { if (event.dataTransfer.types.includes('application/x-tempvault-file')) { event.preventDefault(); event.currentTarget.classList.add('drop-ready') } }} onDragLeave={(event) => event.currentTarget.classList.remove('drop-ready')} onDrop={(event) => { event.preventDefault(); event.currentTarget.classList.remove('drop-ready'); const id = event.dataTransfer.getData('application/x-tempvault-file'); if (id) openPreview(id) }}>
         <div className="rail-tabs"><button className={panel === 'preview' ? 'active' : ''} onClick={() => setPanel('preview')}>PREVIEW <span>{previewOrder.length}</span></button><button className={panel === 'agent' ? 'active' : ''} onClick={() => setPanel('agent')}>ASK AI</button></div>
-        {panel === 'preview' ? <PreviewRail order={previewOrder} previews={previews} onOrder={setPreviewOrder} onFloat={createFloating} onRemove={(id) => setPreviewOrder((current) => current.filter((value) => value !== id))} /> : <AgentPanel selectedIds={[...selected]} settings={snapshot.settings} onSettings={() => setSettingsOpen(true)} />}
+        {panel === 'preview' ? <PreviewRail order={previewOrder} previews={previews} onOrder={setPreviewOrder} onFloat={createFloating} onMove={(id, x, y) => { createFloating(id, x, y); setPreviewOrder((current) => current.filter((value) => value !== id)) }} onRemove={(id) => setPreviewOrder((current) => current.filter((value) => value !== id))} /> : <AgentPanel selectedIds={[...selected]} settings={snapshot.settings} onSettings={() => setSettingsOpen(true)} />}
       </aside>
       <Dock onAdd={() => void perform('Added', () => window.tempVault.addFiles())} onInbox={() => void window.tempVault.openInbox()} onPreview={() => setPanel('preview')} onAgent={() => setPanel('agent')} onRefresh={() => void refresh()} onSettings={() => setSettingsOpen(true)} active={panel} />
       {contextMenu && <ContextMenu item={snapshot.items.find((item) => item.id === contextMenu.id)} x={contextMenu.x} y={contextMenu.y} onClose={() => setContextMenu(null)} onPreview={() => openPreview(contextMenu.id)} onFloat={() => { openPreview(contextMenu.id); createFloating(contextMenu.id) }} onPerform={perform} />}
@@ -191,10 +191,35 @@ function ContextMenu({ item, x, y, onClose, onPreview, onFloat, onPerform }: { i
   return <div className="context-menu" style={{ left, top }} onPointerDown={(event) => event.stopPropagation()}><header><i>{icons[item.category]}</i><div><strong>{item.name}</strong><span>{item.category} · {formatBytes(item.size)}</span></div></header><button onClick={() => action(onPreview)}><span>Open in preview rail</span><kbd>↵</kbd></button><button onClick={() => action(onFloat)}><span>Open floating preview</span><kbd>↗</kbd></button><hr /><button onClick={() => action(() => void window.tempVault.openItem(item.id))}><span>Open with default app</span><kbd>↥</kbd></button><button onClick={() => action(() => void window.tempVault.revealItem(item.id))}><span>Show in File Explorer</span><kbd>⌕</kbd></button><hr /><button onClick={() => action(() => void onPerform(item.status === 'kept' ? 'Temporary' : 'Kept', () => item.status === 'kept' ? window.tempVault.restore([item.id]) : window.tempVault.keep([item.id])))}><span>{item.status === 'kept' ? 'Make temporary' : 'Keep this file'}</span><kbd>★</kbd></button><button onClick={() => action(() => void onPerform('Moved', () => window.tempVault.moveOut([item.id])))}><span>Remove from TempVault…</span><kbd>→</kbd></button><button className="danger" onClick={() => action(() => { if (window.confirm(`Send ${item.name} to the Recycle Bin?`)) void onPerform('Recycled', () => window.tempVault.trash([item.id])) })}><span>Move to Recycle Bin</span><kbd>⌫</kbd></button></div>
 }
 
-function PreviewRail({ order, previews, onOrder, onFloat, onRemove }: { order: string[]; previews: Record<string, FilePreview>; onOrder(ids: string[]): void; onFloat(id: string): void; onRemove(id: string): void }): React.JSX.Element {
-  const [dragged, setDragged] = useState<string | null>(null)
+function PreviewRail({ order, previews, onOrder, onFloat, onMove, onRemove }: { order: string[]; previews: Record<string, FilePreview>; onOrder(ids: string[]): void; onFloat(id: string): void; onMove(id: string, x: number, y: number): void; onRemove(id: string): void }): React.JSX.Element {
+  function startInteractiveMove(event: React.PointerEvent<HTMLElement>, id: string): void {
+    if ((event.target as HTMLElement).closest('button')) return
+    event.preventDefault()
+    const card = event.currentTarget
+    const startX = event.clientX; const startY = event.clientY
+    let active = false
+    const move = (next: PointerEvent): void => {
+      const dx = next.clientX - startX; const dy = next.clientY - startY
+      if (!active && Math.hypot(dx, dy) < 4) return
+      active = true; card.classList.add('interactive-moving')
+      card.style.setProperty('--move-x', `${dx}px`); card.style.setProperty('--move-y', `${dy}px`)
+    }
+    const up = (next: PointerEvent): void => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up)
+      card.classList.remove('interactive-moving'); card.style.removeProperty('--move-x'); card.style.removeProperty('--move-y')
+      if (!active) return
+      const workspace = document.querySelector('.workspace')?.getBoundingClientRect()
+      if (workspace && next.clientX >= workspace.left && next.clientX <= workspace.right && next.clientY >= workspace.top && next.clientY <= workspace.bottom) { onMove(id, next.clientX, next.clientY); return }
+      card.style.pointerEvents = 'none'
+      const target = document.elementFromPoint(next.clientX, next.clientY)?.closest<HTMLElement>('.preview-widget')
+      card.style.pointerEvents = ''
+      const targetId = target?.dataset.previewId
+      if (targetId && targetId !== id) { const reordered = order.filter((value) => value !== id); reordered.splice(reordered.indexOf(targetId), 0, id); onOrder(reordered) }
+    }
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
+  }
   if (!order.length) return <div className="rail-empty"><div><UiIcon name="preview" /></div><b>SELECT FILES TO PREVIEW</b><p>Choose one or many file records. Drag a preview card into the workspace to move it.</p></div>
-  return <div className="preview-grid">{order.map((id) => <article className="preview-widget" key={id} draggable onDragStart={(event) => { setDragged(id); event.dataTransfer.setData('application/x-tempvault-preview', id); event.dataTransfer.effectAllowed = 'move'; event.currentTarget.classList.add('moving') }} onDragEnd={(event) => { setDragged(null); event.currentTarget.classList.remove('moving') }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move' }} onDrop={(event) => { event.preventDefault(); event.stopPropagation(); const source = dragged ?? event.dataTransfer.getData('application/x-tempvault-preview'); if (!source || source === id) return; const next = order.filter((value) => value !== source); next.splice(next.indexOf(id), 0, source); onOrder(next) }}><header><span className="preview-file-icon">{previews[id] ? <FileIcon item={previews[id].item} /> : <UiIcon name="file" />}</span><strong>{previews[id]?.item.name ?? 'Loading…'}</strong><button title="Move into workspace" onClick={() => { onFloat(id); onRemove(id) }}><UiIcon name="detach" /></button><button title="Close preview" onClick={() => onRemove(id)}>×</button></header><PreviewContent preview={previews[id]} compact /></article>)}</div>
+  return <div className="preview-grid">{order.map((id) => <article className="preview-widget" data-preview-id={id} key={id} onPointerDown={(event) => startInteractiveMove(event, id)}><header><span className="preview-file-icon">{previews[id] ? <FileIcon item={previews[id].item} /> : <UiIcon name="file" />}</span><strong>{previews[id]?.item.name ?? 'Loading…'}</strong><button title="Move into workspace" onClick={() => { onFloat(id); onRemove(id) }}><UiIcon name="detach" /></button><button title="Close preview" onClick={() => onRemove(id)}>×</button></header><PreviewContent preview={previews[id]} compact /></article>)}</div>
 }
 
 function PreviewContent({ preview, compact = false }: { preview?: FilePreview; compact?: boolean }): React.JSX.Element {
