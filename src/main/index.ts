@@ -4,6 +4,8 @@ import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import chokidar, { type FSWatcher } from 'chokidar'
 import { VaultService } from './vault'
 import type { OperationResult, VaultSettings } from '../shared/types'
+import { createPreview } from './preview'
+import { askLocalAgent, getAgentStatus } from './local-agent'
 
 const service = new VaultService()
 let mainWindow: BrowserWindow | null = null
@@ -97,16 +99,22 @@ function registerIpc(): void {
     const [item] = await service.resolveIds([id])
     if (item) shell.showItemInFolder(item.path)
   })
+  ipcMain.handle('vault:preview', (_event, id: string) => createPreview(service, id))
+  ipcMain.handle('agent:status', () => getAgentStatus(service))
+  ipcMain.handle('agent:ask', (_event, question: string, focusedIds?: string[]) => askLocalAgent(service, question, focusedIds))
   ipcMain.handle('vault:open-inbox', () => shell.openPath(service.inbox))
-  ipcMain.handle('vault:update-settings', async (_event, patch: Partial<Pick<VaultSettings, 'staleDays' | 'launchAtStartup'>>) => {
+  ipcMain.handle('vault:update-settings', async (_event, patch: Partial<Pick<VaultSettings, 'staleDays' | 'launchAtStartup' | 'theme' | 'agentModel'>>) => {
     const current = await service.getSettings()
     const settings: VaultSettings = {
       ...current,
       staleDays: Number.isInteger(patch.staleDays) ? Math.max(1, Math.min(365, patch.staleDays!)) : current.staleDays,
-      launchAtStartup: patch.launchAtStartup ?? current.launchAtStartup
+      launchAtStartup: patch.launchAtStartup ?? current.launchAtStartup,
+      theme: patch.theme === 'light' || patch.theme === 'dark' ? patch.theme : current.theme,
+      agentModel: typeof patch.agentModel === 'string' && patch.agentModel.trim() ? patch.agentModel.trim() : current.agentModel
     }
     await service.saveSettings(settings)
     app.setLoginItemSettings({ openAtLogin: settings.launchAtStartup })
+    mainWindow?.setTitleBarOverlay({ color: settings.theme === 'light' ? '#ffffff' : '#000000', symbolColor: settings.theme === 'light' ? '#000000' : '#ffffff', height: 44 })
     await notifyChanged()
     return settings
   })

@@ -22,6 +22,33 @@ export interface VaultSettings {
   storageRoot: string
   staleDays: number
   launchAtStartup: boolean
+  theme: 'dark' | 'light'
+  agentModel: string
+}
+
+export type PreviewKind = 'text' | 'image' | 'pdf' | 'audio' | 'video' | 'folder' | 'unsupported'
+
+export interface FilePreview {
+  item: VaultItem
+  kind: PreviewKind
+  mimeType: string
+  content?: string
+  dataUrl?: string
+  truncated?: boolean
+  message?: string
+}
+
+export interface AgentStatus {
+  available: boolean
+  models: string[]
+  activeModel: string
+  message: string
+}
+
+export interface AgentAnswer {
+  answer: string
+  sources: Array<{ id: string; name: string }>
+  model: string
 }
 
 export interface VaultSnapshot {
@@ -45,7 +72,10 @@ export interface TempVaultApi {
   moveOut(ids: string[]): Promise<OperationResult>
   openItem(id: string): Promise<void>
   revealItem(id: string): Promise<void>
+  getPreview(id: string): Promise<FilePreview>
+  getAgentStatus(): Promise<AgentStatus>
+  askAgent(question: string, focusedIds?: string[]): Promise<AgentAnswer>
   openInbox(): Promise<void>
-  updateSettings(settings: Partial<Pick<VaultSettings, 'staleDays' | 'launchAtStartup'>>): Promise<VaultSettings>
+  updateSettings(settings: Partial<Pick<VaultSettings, 'staleDays' | 'launchAtStartup' | 'theme' | 'agentModel'>>): Promise<VaultSettings>
   onVaultChanged(callback: () => void): () => void
 }

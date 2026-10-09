@@ -11,8 +11,11 @@ const api: TempVaultApi & { pathForFile(file: File): string } = {
   moveOut: (ids) => ipcRenderer.invoke('vault:move-out', ids),
   openItem: (id) => ipcRenderer.invoke('vault:open', id),
   revealItem: (id) => ipcRenderer.invoke('vault:reveal', id),
+  getPreview: (id) => ipcRenderer.invoke('vault:preview', id),
+  getAgentStatus: () => ipcRenderer.invoke('agent:status'),
+  askAgent: (question, focusedIds) => ipcRenderer.invoke('agent:ask', question, focusedIds),
   openInbox: () => ipcRenderer.invoke('vault:open-inbox'),
-  updateSettings: (settings: Partial<Pick<VaultSettings, 'staleDays' | 'launchAtStartup'>>) => ipcRenderer.invoke('vault:update-settings', settings),
+  updateSettings: (settings: Partial<Pick<VaultSettings, 'staleDays' | 'launchAtStartup' | 'theme' | 'agentModel'>>) => ipcRenderer.invoke('vault:update-settings', settings),
   onVaultChanged: (callback) => {
     const listener = (): void => callback()
     ipcRenderer.on('vault:changed', listener)

@@ -43,7 +43,7 @@ export class VaultService {
 
   async initialize(): Promise<void> {
     await Promise.all([this.inbox, this.temporary, this.kept].map((path) => mkdir(path, { recursive: true })))
-    if (!existsSync(this.configPath)) await this.saveSettings({ storageRoot: this.root, staleDays: 7, launchAtStartup: false })
+    if (!existsSync(this.configPath)) await this.saveSettings({ storageRoot: this.root, staleDays: 7, launchAtStartup: false, theme: 'dark', agentModel: 'tempvault-agent' })
   }
 
   async getSettings(): Promise<VaultSettings> {
@@ -53,10 +53,12 @@ export class VaultService {
       return {
         storageRoot: this.root,
         staleDays: clampInteger(parsed.staleDays, 1, 365, 7),
-        launchAtStartup: Boolean(parsed.launchAtStartup)
+        launchAtStartup: Boolean(parsed.launchAtStartup),
+        theme: parsed.theme === 'light' ? 'light' : 'dark',
+        agentModel: typeof parsed.agentModel === 'string' && parsed.agentModel.trim() ? parsed.agentModel.trim() : 'tempvault-agent'
       }
     } catch {
-      return { storageRoot: this.root, staleDays: 7, launchAtStartup: false }
+      return { storageRoot: this.root, staleDays: 7, launchAtStartup: false, theme: 'dark', agentModel: 'tempvault-agent' }
     }
   }
 

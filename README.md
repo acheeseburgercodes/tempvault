@@ -25,6 +25,10 @@ D:\TempVault\storage
 - Optional launch at Windows sign-in
 - Context-isolated, sandboxed renderer with a narrow typed IPC API
 - Path-boundary checks that prevent managed actions from escaping the vault
+- Draggable multi-file preview widgets and detachable in-app preview windows
+- CRM-style file records with dense metadata and multi-selection
+- Strict black-and-white design with dark and light modes
+- Local file Q&A through Ollama at `127.0.0.1` with no cloud fallback
 
 ## Development
 
@@ -64,7 +68,21 @@ src/preload/    Typed and context-isolated renderer bridge
 src/renderer/   React desktop UI
 src/shared/     Shared TypeScript contracts
 tests/          Storage engine tests
+docs/           Local model setup and external fine-tuning guide
+models/         Example Ollama Modelfile
 ```
+
+## Local AI
+
+Install and start Ollama, create or pull a local model, then set its exact name in TempVault Settings. The default expected model name is `tempvault-agent`.
+
+```powershell
+ollama pull gemma3:4b
+ollama create tempvault-agent -f .\models\Modelfile.example
+ollama serve
+```
+
+See [docs/TRAIN_LOCAL_MODEL.md](docs/TRAIN_LOCAL_MODEL.md) for the recommended retrieval setup and an external LoRA/QLoRA training and Ollama import workflow.
 
 ## License
 

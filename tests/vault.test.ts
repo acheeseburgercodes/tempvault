@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import { VaultService } from '../src/main/vault'
+import { createPreview } from '../src/main/preview'
 
 describe('VaultService', () => {
   it('sorts ingested files, resolves collisions, and changes status', async () => {
@@ -43,5 +44,18 @@ describe('VaultService', () => {
     expect(() => service.assertInsideVault(join(sandbox, 'outside.txt'))).toThrow(/outside/)
     expect(() => service.assertOutsideVault(service.inbox)).toThrow(/already inside/)
     await expect(stat(service.root)).resolves.toBeDefined()
+  })
+
+  it('creates a bounded text preview for managed files', async () => {
+    const sandbox = await mkdtemp(join(tmpdir(), 'tempvault-preview-'))
+    const service = new VaultService(join(sandbox, 'vault'))
+    const source = join(sandbox, 'context.md')
+    await writeFile(source, '# Local context\nOnly on this machine.')
+    await service.ingest([source])
+    const [item] = (await service.snapshot()).items
+    const preview = await createPreview(service, item.id)
+    expect(preview.kind).toBe('text')
+    expect(preview.content).toContain('Only on this machine')
+    expect(preview.item.path.startsWith(service.root)).toBe(true)
   })
 })
