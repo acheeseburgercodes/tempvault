@@ -24,6 +24,9 @@ export interface VaultSettings {
   launchAtStartup: boolean
   theme: 'dark' | 'light'
   agentModel: string
+  accentColor: string
+  backgroundColor: string
+  windowOpacity: number
 }
 
 export type PreviewKind = 'text' | 'image' | 'pdf' | 'audio' | 'video' | 'folder' | 'unsupported'
@@ -76,6 +79,6 @@ export interface TempVaultApi {
   getAgentStatus(): Promise<AgentStatus>
   askAgent(question: string, focusedIds?: string[]): Promise<AgentAnswer>
   openInbox(): Promise<void>
-  updateSettings(settings: Partial<Pick<VaultSettings, 'staleDays' | 'launchAtStartup' | 'theme' | 'agentModel'>>): Promise<VaultSettings>
+  updateSettings(settings: Partial<Pick<VaultSettings, 'staleDays' | 'launchAtStartup' | 'theme' | 'agentModel' | 'accentColor' | 'backgroundColor' | 'windowOpacity'>>): Promise<VaultSettings>
   onVaultChanged(callback: () => void): () => void
 }

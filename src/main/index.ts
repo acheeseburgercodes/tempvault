@@ -19,7 +19,8 @@ function createWindow(): void {
     minWidth: 980,
     minHeight: 640,
     show: false,
-    backgroundColor: '#0d1117',
+    backgroundColor: '#00000000',
+    transparent: true,
     titleBarStyle: 'hidden',
     titleBarOverlay: { color: '#0d1117', symbolColor: '#d9e2f2', height: 44 },
     webPreferences: {
@@ -29,6 +30,8 @@ function createWindow(): void {
       nodeIntegration: false
     }
   })
+
+  void service.getSettings().then((settings) => mainWindow?.setOpacity(settings.windowOpacity))
 
   mainWindow.on('ready-to-show', () => mainWindow?.show())
   mainWindow.on('closed', () => { mainWindow = null })
@@ -103,18 +106,22 @@ function registerIpc(): void {
   ipcMain.handle('agent:status', () => getAgentStatus(service))
   ipcMain.handle('agent:ask', (_event, question: string, focusedIds?: string[]) => askLocalAgent(service, question, focusedIds))
   ipcMain.handle('vault:open-inbox', () => shell.openPath(service.inbox))
-  ipcMain.handle('vault:update-settings', async (_event, patch: Partial<Pick<VaultSettings, 'staleDays' | 'launchAtStartup' | 'theme' | 'agentModel'>>) => {
+  ipcMain.handle('vault:update-settings', async (_event, patch: Partial<Pick<VaultSettings, 'staleDays' | 'launchAtStartup' | 'theme' | 'agentModel' | 'accentColor' | 'backgroundColor' | 'windowOpacity'>>) => {
     const current = await service.getSettings()
     const settings: VaultSettings = {
       ...current,
       staleDays: Number.isInteger(patch.staleDays) ? Math.max(1, Math.min(365, patch.staleDays!)) : current.staleDays,
       launchAtStartup: patch.launchAtStartup ?? current.launchAtStartup,
       theme: patch.theme === 'light' || patch.theme === 'dark' ? patch.theme : current.theme,
-      agentModel: typeof patch.agentModel === 'string' && patch.agentModel.trim() ? patch.agentModel.trim() : current.agentModel
+      agentModel: typeof patch.agentModel === 'string' && patch.agentModel.trim() ? patch.agentModel.trim() : current.agentModel,
+      accentColor: typeof patch.accentColor === 'string' && /^#[0-9a-f]{6}$/i.test(patch.accentColor) ? patch.accentColor : current.accentColor,
+      backgroundColor: typeof patch.backgroundColor === 'string' && /^#[0-9a-f]{6}$/i.test(patch.backgroundColor) ? patch.backgroundColor : current.backgroundColor,
+      windowOpacity: typeof patch.windowOpacity === 'number' ? Math.max(0.65, Math.min(1, patch.windowOpacity)) : current.windowOpacity
     }
     await service.saveSettings(settings)
     app.setLoginItemSettings({ openAtLogin: settings.launchAtStartup })
-    mainWindow?.setTitleBarOverlay({ color: settings.theme === 'light' ? '#ffffff' : '#000000', symbolColor: settings.theme === 'light' ? '#000000' : '#ffffff', height: 44 })
+    mainWindow?.setOpacity(settings.windowOpacity)
+    mainWindow?.setTitleBarOverlay({ color: settings.backgroundColor, symbolColor: settings.theme === 'light' ? '#000000' : '#ffffff', height: 44 })
     await notifyChanged()
     return settings
   })

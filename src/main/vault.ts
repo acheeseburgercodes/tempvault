@@ -43,7 +43,7 @@ export class VaultService {
 
   async initialize(): Promise<void> {
     await Promise.all([this.inbox, this.temporary, this.kept].map((path) => mkdir(path, { recursive: true })))
-    if (!existsSync(this.configPath)) await this.saveSettings({ storageRoot: this.root, staleDays: 7, launchAtStartup: false, theme: 'dark', agentModel: 'tempvault-agent' })
+    if (!existsSync(this.configPath)) await this.saveSettings({ storageRoot: this.root, staleDays: 7, launchAtStartup: false, theme: 'dark', agentModel: 'tempvault-agent', accentColor: '#ffffff', backgroundColor: '#000000', windowOpacity: 0.96 })
   }
 
   async getSettings(): Promise<VaultSettings> {
@@ -55,10 +55,13 @@ export class VaultService {
         staleDays: clampInteger(parsed.staleDays, 1, 365, 7),
         launchAtStartup: Boolean(parsed.launchAtStartup),
         theme: parsed.theme === 'light' ? 'light' : 'dark',
-        agentModel: typeof parsed.agentModel === 'string' && parsed.agentModel.trim() ? parsed.agentModel.trim() : 'tempvault-agent'
+        agentModel: typeof parsed.agentModel === 'string' && parsed.agentModel.trim() ? parsed.agentModel.trim() : 'tempvault-agent',
+        accentColor: validColor(parsed.accentColor, '#ffffff'),
+        backgroundColor: validColor(parsed.backgroundColor, parsed.theme === 'light' ? '#ffffff' : '#000000'),
+        windowOpacity: typeof parsed.windowOpacity === 'number' ? Math.max(0.65, Math.min(1, parsed.windowOpacity)) : 0.96
       }
     } catch {
-      return { storageRoot: this.root, staleDays: 7, launchAtStartup: false, theme: 'dark', agentModel: 'tempvault-agent' }
+      return { storageRoot: this.root, staleDays: 7, launchAtStartup: false, theme: 'dark', agentModel: 'tempvault-agent', accentColor: '#ffffff', backgroundColor: '#000000', windowOpacity: 0.96 }
     }
   }
 
@@ -242,6 +245,8 @@ export class VaultService {
     for (const base of [this.temporary, this.kept]) await pruneEmpty(base, base)
   }
 }
+
+function validColor(value: unknown, fallback: string): string { return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback }
 
 async function movePath(source: string, destination: string): Promise<void> {
   try {
