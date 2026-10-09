@@ -21,7 +21,7 @@ function createWindow(): void {
     titleBarStyle: 'hidden',
     titleBarOverlay: { color: '#0d1117', symbolColor: '#d9e2f2', height: 44 },
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload: join(__dirname, '../preload/index.mjs'),
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false

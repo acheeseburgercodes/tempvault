@@ -27,7 +27,7 @@
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.3",
-    "electron": "^38.1.2",
+    "electron": "^44.7.0",
     "electron-builder": "^26.0.12",
     "electron-vite": "^4.0.1",
     "typescript": "^5.9.2",
@@ -37,17 +37,28 @@
   "build": {
     "appId": "com.tempvault.app",
     "productName": "TempVault",
-    "directories": { "output": "release" },
-    "files": ["out/**/*", "package.json"],
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
     "win": {
-      "target": ["nsis", "portable"],
-      "artifactName": "TempVault-${version}-${arch}.${ext}"
+      "target": [
+        "nsis",
+        "portable"
+      ]
     },
     "nsis": {
+      "artifactName": "TempVault-Setup-${version}-${arch}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
+    },
+    "portable": {
+      "artifactName": "TempVault-Portable-${version}-${arch}.${ext}"
     }
   }
 }
