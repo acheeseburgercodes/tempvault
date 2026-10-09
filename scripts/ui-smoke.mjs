@@ -39,6 +39,11 @@ const result = await evaluate(`(async () => {
   const shellStyle = getComputedStyle(document.querySelector('.app-shell'))
   if (sidebarStyle.backdropFilter === 'none') throw new Error('Sidebar glass blur is missing')
   if (shellStyle.backgroundColor !== 'rgba(0, 0, 0, 0)' || workspaceStyle.backgroundColor === 'rgba(0, 0, 0, 0)') throw new Error('Transparency is not limited to the sidebar region')
+  const dock = document.querySelector('.app-dock')
+  const dockBounds = dock.getBoundingClientRect()
+  const workspaceBounds = document.querySelector('.workspace').getBoundingClientRect()
+  const dockOffset = Math.abs((dockBounds.left + dockBounds.width / 2) - (workspaceBounds.left + workspaceBounds.width / 2))
+  if (dockOffset > 2 || dock.querySelectorAll('button svg').length !== dock.querySelectorAll('button').length) throw new Error('Dock alignment or icons are incorrect')
   let previewCheck = 'skipped (vault has fewer than two files)'
   let wordPreview = 'skipped (no selected .docx file)'
   if (rows.length >= 2) {
@@ -52,6 +57,7 @@ const result = await evaluate(`(async () => {
     await pause(500)
     const widgets = document.querySelectorAll('.preview-widget')
     if (widgets.length !== 2) throw new Error('Multi-file previews did not render')
+    if ([...widgets].some((widget) => !widget.querySelector('.preview-file-icon svg'))) throw new Error('Preview file icons did not render')
     const docxWidget = [...widgets].find((widget) => widget.querySelector('header strong')?.textContent?.toLowerCase().endsWith('.docx'))
     if (docxWidget) {
       const wordText = docxWidget.querySelector('.text-preview')?.textContent?.trim() || ''
@@ -62,19 +68,23 @@ const result = await evaluate(`(async () => {
     widgets[0].querySelector('header button').click()
     await pause(100)
     if (document.querySelectorAll('.floating-preview').length !== floatingBefore + 1) throw new Error('Detached preview did not render')
+    if (document.querySelectorAll('.preview-widget').length !== widgets.length - 1) throw new Error('Detached preview copied instead of moving')
     previewCheck = 'passed'
   }
   document.querySelector('.title-actions button:last-child').click()
   await pause(350)
   const theme = document.documentElement.dataset.theme
   const background = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
+  const themedSidebarStyle = getComputedStyle(document.querySelector('.sidebar'))
   document.querySelectorAll('.rail-tabs button')[1].click()
   await pause(2300)
   return {
     records: rows.length,
     layoutCheck: 'passed',
     maxRowHeight,
+    dockOffset,
     sidebarGlass: { background: sidebarStyle.backgroundColor, blur: sidebarStyle.backdropFilter },
+    themedSidebarGlass: { background: themedSidebarStyle.backgroundColor, blur: themedSidebarStyle.backdropFilter },
     previewCheck,
     wordPreview,
     floating: document.querySelectorAll('.floating-preview').length,

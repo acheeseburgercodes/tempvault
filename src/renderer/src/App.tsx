@@ -110,6 +110,7 @@ export default function App(): React.JSX.Element {
     const id = event.dataTransfer.getData('application/x-tempvault-preview')
     if (!id) return
     event.preventDefault(); createFloating(id, event.clientX, event.clientY)
+    setPreviewOrder((current) => current.filter((value) => value !== id))
   }
 
   function updateFloating(key: string, patch: Partial<FloatingWindow>): void { setFloating((current) => current.map((window) => window.key === key ? { ...window, ...patch } : window)) }
@@ -132,7 +133,7 @@ export default function App(): React.JSX.Element {
         <button className="settings-link" onClick={() => setSettingsOpen(true)}>SETTINGS <span>→</span></button>
       </aside>
 
-      <main className="workspace" ref={workspaceRef} onDragOver={(event) => { if (event.dataTransfer.types.includes('application/x-tempvault-preview')) event.preventDefault() }} onDrop={handleWorkspaceDrop}>
+      <main className="workspace" ref={workspaceRef} onDragOver={(event) => { if (event.dataTransfer.types.includes('application/x-tempvault-preview')) { event.preventDefault(); event.dataTransfer.dropEffect = 'move' } }} onDrop={handleWorkspaceDrop}>
         <section className="workspace-head"><div><p className="kicker">FILES / {view.toUpperCase()}</p><h1>{viewTitle(view)}</h1><p>{snapshot.items.length} records · {formatBytes(snapshot.totals.bytes)} on disk</p></div><div className="head-actions"><button onClick={() => void perform('Added', () => window.tempVault.addFolder())}>NEW FOLDER IMPORT</button><button className="solid" onClick={() => void perform('Added', () => window.tempVault.addFiles())}>＋ ADD FILES</button></div></section>
         <section className="metrics"><Metric label="TOTAL" value={snapshot.items.length} /><Metric label="TEMPORARY" value={snapshot.totals.temporary} /><Metric label="KEPT" value={snapshot.totals.kept} /><Metric label="REVIEW" value={snapshot.totals.stale} /></section>
         <section className="records">
@@ -192,8 +193,8 @@ function ContextMenu({ item, x, y, onClose, onPreview, onFloat, onPerform }: { i
 
 function PreviewRail({ order, previews, onOrder, onFloat, onRemove }: { order: string[]; previews: Record<string, FilePreview>; onOrder(ids: string[]): void; onFloat(id: string): void; onRemove(id: string): void }): React.JSX.Element {
   const [dragged, setDragged] = useState<string | null>(null)
-  if (!order.length) return <div className="rail-empty"><div>PV</div><b>SELECT FILES TO PREVIEW</b><p>Choose one or many file records. Drag a preview card into the workspace to detach it.</p></div>
-  return <div className="preview-grid">{order.map((id) => <article className="preview-widget" key={id} draggable onDragStart={(event) => { setDragged(id); event.dataTransfer.setData('application/x-tempvault-preview', id); event.dataTransfer.effectAllowed = 'copyMove' }} onDragEnd={() => setDragged(null)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.stopPropagation(); const source = dragged ?? event.dataTransfer.getData('application/x-tempvault-preview'); if (!source || source === id) return; const next = order.filter((value) => value !== source); next.splice(next.indexOf(id), 0, source); onOrder(next) }}><header><span>::</span><strong>{previews[id]?.item.name ?? 'Loading…'}</strong><button title="Detach inside app" onClick={() => onFloat(id)}>↗</button><button title="Close preview" onClick={() => onRemove(id)}>×</button></header><PreviewContent preview={previews[id]} compact /></article>)}</div>
+  if (!order.length) return <div className="rail-empty"><div><UiIcon name="preview" /></div><b>SELECT FILES TO PREVIEW</b><p>Choose one or many file records. Drag a preview card into the workspace to move it.</p></div>
+  return <div className="preview-grid">{order.map((id) => <article className="preview-widget" key={id} draggable onDragStart={(event) => { setDragged(id); event.dataTransfer.setData('application/x-tempvault-preview', id); event.dataTransfer.effectAllowed = 'move'; event.currentTarget.classList.add('moving') }} onDragEnd={(event) => { setDragged(null); event.currentTarget.classList.remove('moving') }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move' }} onDrop={(event) => { event.preventDefault(); event.stopPropagation(); const source = dragged ?? event.dataTransfer.getData('application/x-tempvault-preview'); if (!source || source === id) return; const next = order.filter((value) => value !== source); next.splice(next.indexOf(id), 0, source); onOrder(next) }}><header><span className="preview-file-icon">{previews[id] ? <FileIcon item={previews[id].item} /> : <UiIcon name="file" />}</span><strong>{previews[id]?.item.name ?? 'Loading…'}</strong><button title="Move into workspace" onClick={() => { onFloat(id); onRemove(id) }}><UiIcon name="detach" /></button><button title="Close preview" onClick={() => onRemove(id)}>×</button></header><PreviewContent preview={previews[id]} compact /></article>)}</div>
 }
 
 function PreviewContent({ preview, compact = false }: { preview?: FilePreview; compact?: boolean }): React.JSX.Element {
@@ -219,7 +220,7 @@ function FloatingPreview({ state, preview, onClose, onFocus, onUpdate }: { state
     const up = (): void => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up) }
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
   }
-  return <section className="floating-preview" style={{ left: state.x, top: state.y, width: state.width, height: state.height, zIndex: state.z }} onPointerDown={onFocus}><header onPointerDown={startMove}><span>::</span><strong>{preview?.item.name ?? 'Preview'}</strong><button onPointerDown={(event) => event.stopPropagation()} onClick={() => preview && void window.tempVault.revealItem(preview.item.id)}>•••</button><button onPointerDown={(event) => event.stopPropagation()} onClick={onClose}>×</button></header><div className="floating-content"><PreviewContent preview={preview} /></div><i className="resize-handle" onPointerDown={startResize} /></section>
+  return <section className="floating-preview" style={{ left: state.x, top: state.y, width: state.width, height: state.height, zIndex: state.z }} onPointerDown={onFocus}><header onPointerDown={startMove}><span className="preview-file-icon">{preview ? <FileIcon item={preview.item} /> : <UiIcon name="file" />}</span><strong>{preview?.item.name ?? 'Preview'}</strong><button onPointerDown={(event) => event.stopPropagation()} onClick={() => preview && void window.tempVault.revealItem(preview.item.id)}><UiIcon name="folder" /></button><button onPointerDown={(event) => event.stopPropagation()} onClick={onClose}>×</button></header><div className="floating-content"><PreviewContent preview={preview} /></div><i className="resize-handle" onPointerDown={startResize} /></section>
 }
 
 function AgentPanel({ selectedIds, settings, onSettings }: { selectedIds: string[]; settings: VaultSnapshot['settings']; onSettings(): void }): React.JSX.Element {
@@ -238,11 +239,34 @@ function AgentPanel({ selectedIds, settings, onSettings }: { selectedIds: string
 
 function Dock({ onAdd, onInbox, onPreview, onAgent, onRefresh, onSettings, active }: { onAdd(): void; onInbox(): void; onPreview(): void; onAgent(): void; onRefresh(): void; onSettings(): void; active: Panel }): React.JSX.Element {
   const actions = [
-    { glyph: '+', label: 'Add files', action: onAdd }, { glyph: 'IN', label: 'Inbox', action: onInbox },
-    { glyph: 'PV', label: 'Previews', action: onPreview, active: active === 'preview' }, { glyph: 'AI', label: 'Local agent', action: onAgent, active: active === 'agent' },
-    { glyph: '↻', label: 'Refresh', action: onRefresh }, { glyph: '⚙', label: 'Appearance', action: onSettings }
+    { icon: 'add', label: 'Add files', action: onAdd }, { icon: 'inbox', label: 'Inbox', action: onInbox },
+    { icon: 'preview', label: 'Previews', action: onPreview, active: active === 'preview' }, { icon: 'sparkles', label: 'Local agent', action: onAgent, active: active === 'agent' },
+    { icon: 'refresh', label: 'Refresh', action: onRefresh }, { icon: 'settings', label: 'Appearance', action: onSettings }
   ]
-  return <nav className="app-dock" aria-label="Quick actions">{actions.map((item) => <button key={item.label} className={item.active ? 'active' : ''} onClick={item.action}><span>{item.glyph}</span><i>{item.label}</i></button>)}</nav>
+  return <nav className="app-dock" aria-label="Quick actions">{actions.map((item) => <button key={item.label} className={item.active ? 'active' : ''} onClick={item.action} aria-label={item.label}><span><UiIcon name={item.icon} /></span><i>{item.label}</i></button>)}</nav>
+}
+
+function FileIcon({ item }: { item: VaultItem }): React.JSX.Element {
+  const name = item.category === 'Images' ? 'image' : item.category === 'Audio' ? 'audio' : item.category === 'Videos' ? 'video' : item.category === 'Folders' ? 'folder' : item.category === 'Archives' ? 'archive' : item.category === 'Code' ? 'code' : 'file'
+  return <UiIcon name={name} />
+}
+
+function UiIcon({ name }: { name: string }): React.JSX.Element {
+  const common = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true }
+  if (name === 'add') return <svg {...common}><path d="M12 5v14M5 12h14" /></svg>
+  if (name === 'inbox') return <svg {...common}><path d="M4 4h16v14H4zM4 14h5l2 2h2l2-2h5" /></svg>
+  if (name === 'preview') return <svg {...common}><path d="M2.8 12s3.5-6 9.2-6 9.2 6 9.2 6-3.5 6-9.2 6-9.2-6-9.2-6Z" /><circle cx="12" cy="12" r="2.5" /></svg>
+  if (name === 'sparkles') return <svg {...common}><path d="m12 3 1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3ZM18.5 14l.7 2.3 2.3.7-2.3.7-.7 2.3-.7-2.3-2.3-.7 2.3-.7.7-2.3ZM5 13l.9 2.6 2.6.9-2.6.9L5 20l-.9-2.6-2.6-.9 2.6-.9L5 13Z" /></svg>
+  if (name === 'refresh') return <svg {...common}><path d="M20 7v5h-5M4 17v-5h5" /><path d="M6.1 8A7 7 0 0 1 18 6l2 2M18 16a7 7 0 0 1-11.9 2L4 16" /></svg>
+  if (name === 'settings') return <svg {...common}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" /></svg>
+  if (name === 'detach') return <svg {...common}><path d="M14 4h6v6M20 4l-9 9" /><path d="M19 13v6H5V5h6" /></svg>
+  if (name === 'folder') return <svg {...common}><path d="M3 6h6l2 2h10v11H3z" /></svg>
+  if (name === 'image') return <svg {...common}><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9" r="1.5" /><path d="m4 17 5-5 3.5 3.5 2-2L20 19" /></svg>
+  if (name === 'audio') return <svg {...common}><path d="M9 18V5l10-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="16" cy="16" r="3" /></svg>
+  if (name === 'video') return <svg {...common}><rect x="3" y="5" width="14" height="14" rx="2" /><path d="m17 10 4-3v10l-4-3" /></svg>
+  if (name === 'archive') return <svg {...common}><path d="M4 7h16v13H4zM3 3h18v4H3zM9 11h6" /></svg>
+  if (name === 'code') return <svg {...common}><path d="m8 9-3 3 3 3M16 9l3 3-3 3M14 5l-4 14" /></svg>
+  return <svg {...common}><path d="M6 2h8l4 4v16H6z" /><path d="M14 2v5h5" /></svg>
 }
 
 function Settings({ snapshot, onClose, onSaved }: { snapshot: VaultSnapshot; onClose(): void; onSaved(): Promise<void> }): React.JSX.Element {
