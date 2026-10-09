@@ -31,8 +31,6 @@ function createWindow(): void {
     }
   })
 
-  void service.getSettings().then((settings) => mainWindow?.setOpacity(settings.windowOpacity))
-
   mainWindow.on('ready-to-show', () => mainWindow?.show())
   mainWindow.on('closed', () => { mainWindow = null })
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -116,11 +114,10 @@ function registerIpc(): void {
       agentModel: typeof patch.agentModel === 'string' && patch.agentModel.trim() ? patch.agentModel.trim() : current.agentModel,
       accentColor: typeof patch.accentColor === 'string' && /^#[0-9a-f]{6}$/i.test(patch.accentColor) ? patch.accentColor : current.accentColor,
       backgroundColor: typeof patch.backgroundColor === 'string' && /^#[0-9a-f]{6}$/i.test(patch.backgroundColor) ? patch.backgroundColor : current.backgroundColor,
-      windowOpacity: typeof patch.windowOpacity === 'number' ? Math.max(0.65, Math.min(1, patch.windowOpacity)) : current.windowOpacity
+      windowOpacity: typeof patch.windowOpacity === 'number' ? Math.max(0.45, Math.min(0.9, patch.windowOpacity)) : current.windowOpacity
     }
     await service.saveSettings(settings)
     app.setLoginItemSettings({ openAtLogin: settings.launchAtStartup })
-    mainWindow?.setOpacity(settings.windowOpacity)
     mainWindow?.setTitleBarOverlay({ color: settings.backgroundColor, symbolColor: settings.theme === 'light' ? '#000000' : '#ffffff', height: 44 })
     await notifyChanged()
     return settings

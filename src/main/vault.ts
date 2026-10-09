@@ -43,7 +43,7 @@ export class VaultService {
 
   async initialize(): Promise<void> {
     await Promise.all([this.inbox, this.temporary, this.kept].map((path) => mkdir(path, { recursive: true })))
-    if (!existsSync(this.configPath)) await this.saveSettings({ storageRoot: this.root, staleDays: 7, launchAtStartup: false, theme: 'dark', agentModel: 'tempvault-agent', accentColor: '#ffffff', backgroundColor: '#000000', windowOpacity: 0.96 })
+    if (!existsSync(this.configPath)) await this.saveSettings({ storageRoot: this.root, staleDays: 7, launchAtStartup: false, theme: 'dark', agentModel: 'tempvault-agent', accentColor: '#ffffff', backgroundColor: '#000000', windowOpacity: 0.72 })
   }
 
   async getSettings(): Promise<VaultSettings> {
@@ -58,10 +58,10 @@ export class VaultService {
         agentModel: typeof parsed.agentModel === 'string' && parsed.agentModel.trim() ? parsed.agentModel.trim() : 'tempvault-agent',
         accentColor: validColor(parsed.accentColor, '#ffffff'),
         backgroundColor: validColor(parsed.backgroundColor, parsed.theme === 'light' ? '#ffffff' : '#000000'),
-        windowOpacity: typeof parsed.windowOpacity === 'number' ? Math.max(0.65, Math.min(1, parsed.windowOpacity)) : 0.96
+        windowOpacity: typeof parsed.windowOpacity === 'number' ? Math.max(0.45, Math.min(0.9, parsed.windowOpacity)) : 0.72
       }
     } catch {
-      return { storageRoot: this.root, staleDays: 7, launchAtStartup: false, theme: 'dark', agentModel: 'tempvault-agent', accentColor: '#ffffff', backgroundColor: '#000000', windowOpacity: 0.96 }
+      return { storageRoot: this.root, staleDays: 7, launchAtStartup: false, theme: 'dark', agentModel: 'tempvault-agent', accentColor: '#ffffff', backgroundColor: '#000000', windowOpacity: 0.72 }
     }
   }
 

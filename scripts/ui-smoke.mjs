@@ -32,6 +32,13 @@ const result = await evaluate(`(async () => {
   const rowsDoNotOverflow = rows.every((row) => row.scrollWidth <= row.clientWidth + 1)
   const rowsStackVertically = rows.every((row, index) => index === 0 || row.getBoundingClientRect().top >= rows[index - 1].getBoundingClientRect().bottom - 1)
   if (!rowsAreSeparate || !rowsDoNotOverflow || !rowsStackVertically) throw new Error('File record layout overlaps or overflows')
+  const maxRowHeight = Math.max(0, ...rows.map((row) => row.getBoundingClientRect().height))
+  if (maxRowHeight > 55) throw new Error('File records are no longer compact')
+  const sidebarStyle = getComputedStyle(document.querySelector('.sidebar'))
+  const workspaceStyle = getComputedStyle(document.querySelector('.workspace'))
+  const shellStyle = getComputedStyle(document.querySelector('.app-shell'))
+  if (sidebarStyle.backdropFilter === 'none') throw new Error('Sidebar glass blur is missing')
+  if (shellStyle.backgroundColor !== 'rgba(0, 0, 0, 0)' || workspaceStyle.backgroundColor === 'rgba(0, 0, 0, 0)') throw new Error('Transparency is not limited to the sidebar region')
   let previewCheck = 'skipped (vault has fewer than two files)'
   let wordPreview = 'skipped (no selected .docx file)'
   if (rows.length >= 2) {
@@ -66,6 +73,8 @@ const result = await evaluate(`(async () => {
   return {
     records: rows.length,
     layoutCheck: 'passed',
+    maxRowHeight,
+    sidebarGlass: { background: sidebarStyle.backgroundColor, blur: sidebarStyle.backdropFilter },
     previewCheck,
     wordPreview,
     floating: document.querySelectorAll('.floating-preview').length,
