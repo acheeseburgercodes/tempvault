@@ -13,6 +13,8 @@ export default function App(): React.JSX.Element {
   const [snapshot, setSnapshot] = useState<VaultSnapshot | null>(null)
   const [view, setView] = useState<View>('all')
   const [category, setCategory] = useState<Category | 'all'>('all')
+  const [hoverCategory, setHoverCategory] = useState<Category | 'all' | null>(null)
+  const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<{ key: SortKey; descending: boolean }>({ key: 'modifiedAt', descending: true })
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -44,6 +46,7 @@ export default function App(): React.JSX.Element {
   }, [selected, previews])
 
   const staleBoundary = Date.now() - (snapshot?.settings.staleDays ?? 7) * 86_400_000
+  const effectiveCategory = hoverCategory ?? category
   const items = useMemo(() => {
     if (!snapshot) return []
     const query = search.trim().toLowerCase()
@@ -51,14 +54,19 @@ export default function App(): React.JSX.Element {
       if (view === 'temporary' && item.status !== 'temporary') return false
       if (view === 'kept' && item.status !== 'kept') return false
       if (view === 'stale' && !(item.status === 'temporary' && item.modifiedAt < staleBoundary)) return false
-      if (category !== 'all' && item.category !== category) return false
+      if (effectiveCategory !== 'all' && item.category !== effectiveCategory) return false
       return !query || `${item.name} ${item.extension} ${item.category}`.toLowerCase().includes(query)
     }).sort((a, b) => {
       const left = a[sort.key]; const right = b[sort.key]
       const compared = typeof left === 'string' ? left.localeCompare(String(right)) : left - Number(right)
       return sort.descending ? -compared : compared
     })
-  }, [snapshot, search, view, category, sort, staleBoundary])
+  }, [snapshot, search, view, effectiveCategory, sort, staleBoundary])
+  const pageSize = 8
+  const pageCount = Math.max(1, Math.ceil(items.length / pageSize))
+  const pagedItems = items.slice((page - 1) * pageSize, page * pageSize)
+  useEffect(() => { setPage(1) }, [search, view, category, hoverCategory])
+  useEffect(() => { setPage((current) => Math.min(current, pageCount)) }, [pageCount])
 
   async function perform(label: string, task: () => Promise<OperationResult>): Promise<void> {
     setBusy(true)
@@ -70,7 +78,11 @@ export default function App(): React.JSX.Element {
 
   function toggleSort(key: SortKey): void { setSort((current) => ({ key, descending: current.key === key ? !current.descending : key !== 'name' && key !== 'category' })) }
   function toggleItem(id: string): void { setPanel('preview'); setSelected((current) => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next }) }
-  function selectRow(event: React.MouseEvent, id: string): void { setPanel('preview'); if (event.ctrlKey || event.metaKey) toggleItem(id); else setSelected(new Set([id])) }
+  function selectRow(event: React.MouseEvent, id: string): void {
+    setPanel('preview')
+    if (event.ctrlKey || event.metaKey) toggleItem(id)
+    else setSelected((current) => current.size === 1 && current.has(id) ? new Set() : new Set([id]))
+  }
 
   async function handleFileDrop(event: React.DragEvent): Promise<void> {
     event.preventDefault(); setDraggingFiles(false)
@@ -116,11 +128,12 @@ export default function App(): React.JSX.Element {
         <section className="workspace-head"><div><p className="kicker">FILES / {view.toUpperCase()}</p><h1>{viewTitle(view)}</h1><p>{snapshot.items.length} records · {formatBytes(snapshot.totals.bytes)} on disk</p></div><div className="head-actions"><button onClick={() => void perform('Added', () => window.tempVault.addFolder())}>NEW FOLDER IMPORT</button><button className="solid" onClick={() => void perform('Added', () => window.tempVault.addFiles())}>＋ ADD FILES</button></div></section>
         <section className="metrics"><Metric label="TOTAL" value={snapshot.items.length} /><Metric label="TEMPORARY" value={snapshot.totals.temporary} /><Metric label="KEPT" value={snapshot.totals.kept} /><Metric label="REVIEW" value={snapshot.totals.stale} /></section>
         <section className="records">
-          <div className="record-tools"><label><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search records" /></label><select value={category} onChange={(event) => setCategory(event.target.value as Category | 'all')}><option value="all">ALL TYPES</option>{CATEGORIES.map((value) => <option key={value}>{value.toUpperCase()}</option>)}</select><button onClick={() => void refresh()}>REFRESH</button></div>
-          {selected.size > 0 && <div className="bulk"><strong>{selected.size} SELECTED</strong><span>Selected files appear in the preview rail.</span><div><button disabled={busy} onClick={() => void perform('Kept', () => window.tempVault.keep([...selected]))}>KEEP</button><button disabled={busy} onClick={() => void perform('Temporary', () => window.tempVault.restore([...selected]))}>TEMPORARY</button><button disabled={busy} onClick={() => void perform('Moved', () => window.tempVault.moveOut([...selected]))}>MOVE OUT</button><button disabled={busy} onClick={() => void trashSelected()}>RECYCLE</button><button onClick={() => setSelected(new Set())}>×</button></div></div>}
+          <div className="record-tools"><label><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search records" /></label><ColorFilter value={category} hovered={hoverCategory} items={snapshot.items} onHover={setHoverCategory} onChange={setCategory} /><button onClick={() => void refresh()}>REFRESH</button></div>
+          <div className={`bulk-slot ${selected.size ? 'visible' : ''}`} aria-hidden={!selected.size}><div className="bulk"><strong>{selected.size} SELECTED</strong><span>Selected files appear in the preview rail.</span><div><button disabled={busy} onClick={() => void perform('Kept', () => window.tempVault.keep([...selected]))}>KEEP</button><button disabled={busy} onClick={() => void perform('Temporary', () => window.tempVault.restore([...selected]))}>TEMPORARY</button><button disabled={busy} onClick={() => void perform('Moved', () => window.tempVault.moveOut([...selected]))}>MOVE OUT</button><button className="danger" disabled={busy} onClick={() => void trashSelected()}>RECYCLE</button><button onClick={() => setSelected(new Set())}>×</button></div></div></div>
           <div className="record-header"><div><input type="checkbox" checked={items.length > 0 && items.every((item) => selected.has(item.id))} onChange={() => { setPanel('preview'); setSelected(items.every((item) => selected.has(item.id)) ? new Set() : new Set(items.map((item) => item.id))) }} /></div><SortButton label="FILE RECORD" column="name" sort={sort} onClick={toggleSort} /><SortButton label="TYPE" column="category" sort={sort} onClick={toggleSort} /><span>STATE</span><SortButton label="SIZE" column="size" sort={sort} onClick={toggleSort} /><SortButton label="UPDATED" column="modifiedAt" sort={sort} onClick={toggleSort} /><span /></div>
-          {items.map((item) => <FileRecord key={item.id} item={item} active={selected.has(item.id)} stale={item.status === 'temporary' && item.modifiedAt < staleBoundary} onToggle={toggleItem} onSelect={selectRow} onPreview={() => { setSelected((current) => new Set([...current, item.id])); setPanel('preview') }} />)}
+          {pagedItems.map((item) => <FileRecord key={item.id} item={item} active={selected.has(item.id)} stale={item.status === 'temporary' && item.modifiedAt < staleBoundary} onToggle={toggleItem} onSelect={selectRow} onPreview={() => { setSelected((current) => new Set([...current, item.id])); setPanel('preview') }} />)}
           {!items.length && <div className="empty"><b>NO FILE RECORDS</b><p>{search || category !== 'all' ? 'Adjust the search or filter.' : 'Drop files anywhere or add your first record.'}</p></div>}
+          {!!items.length && <Pagination page={page} count={pageCount} total={items.length} onChange={setPage} />}
         </section>
         {floating.map((windowState) => <FloatingPreview key={windowState.key} state={windowState} preview={previews[windowState.id]} onClose={() => setFloating((current) => current.filter((item) => item.key !== windowState.key))} onFocus={() => focusFloating(windowState.key)} onUpdate={(patch) => updateFloating(windowState.key, patch)} />)}
       </main>
@@ -134,6 +147,22 @@ export default function App(): React.JSX.Element {
       {toast && <div className="toast">{toast}</div>}
     </div>
   )
+}
+
+const filterColors: Record<Category | 'all', string> = {
+  all: '#ffffff', Images: '#ff5c5c', Videos: '#ff9f43', Audio: '#ffd43b', Documents: '#5eead4',
+  Spreadsheets: '#4ade80', Presentations: '#f472b6', Archives: '#a78bfa', Installers: '#fb7185',
+  Code: '#60a5fa', Fonts: '#c084fc', Folders: '#22d3ee', Other: '#94a3b8'
+}
+
+function ColorFilter({ value, hovered, items, onHover, onChange }: { value: Category | 'all'; hovered: Category | 'all' | null; items: VaultItem[]; onHover(value: Category | 'all' | null): void; onChange(value: Category | 'all'): void }): React.JSX.Element {
+  const options: Array<Category | 'all'> = ['all', ...CATEGORIES]
+  return <div className="color-filter" onMouseLeave={() => onHover(null)}><button className="filter-trigger"><i style={{ background: filterColors[hovered ?? value] }} /><span>{(hovered ?? value) === 'all' ? 'ALL TYPES' : (hovered ?? value).toUpperCase()}</span><b>⌄</b></button><div className="filter-popover">{options.map((option) => { const count = option === 'all' ? items.length : items.filter((item) => item.category === option).length; const active = (hovered ?? value) === option; return <button key={option} className={active ? 'active' : ''} style={{ '--swatch': filterColors[option] } as React.CSSProperties} onMouseEnter={() => onHover(option)} onFocus={() => onHover(option)} onClick={() => { onChange(option); onHover(null) }}><i /><span>{option === 'all' ? 'All files' : option}</span><small>{count}</small></button> })}</div></div>
+}
+
+function Pagination({ page, count, total, onChange }: { page: number; count: number; total: number; onChange(page: number): void }): React.JSX.Element {
+  const pages = Array.from({ length: count }, (_, index) => index + 1).filter((value) => count <= 7 || value === 1 || value === count || Math.abs(value - page) <= 1)
+  return <nav className="pagination" aria-label="File pages"><span>{total} RECORDS</span><div><button disabled={page === 1} onClick={() => onChange(page - 1)}>‹</button>{pages.map((value, index) => <span key={value}>{index > 0 && value - pages[index - 1] > 1 && <i>…</i>}<button className={page === value ? 'active' : ''} onClick={() => onChange(value)}>{String(value).padStart(2, '0')}</button></span>)}<button disabled={page === count} onClick={() => onChange(page + 1)}>›</button></div></nav>
 }
 
 function Nav({ active, label, count, glyph, onClick }: { active: boolean; label: string; count: number; glyph: string; onClick(): void }): React.JSX.Element { return <button className={`nav-item ${active ? 'active' : ''}`} onClick={onClick}><i>{glyph}</i><b>{label}</b><small>{count}</small></button> }
