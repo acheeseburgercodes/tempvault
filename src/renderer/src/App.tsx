@@ -124,7 +124,7 @@ export default function App(): React.JSX.Element {
   const selectedItems = snapshot.items.filter((item) => selected.has(item.id))
 
   return (
-    <div className="app-shell" onDragOver={(event) => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); setDraggingFiles(true) } }} onDragLeave={(event) => { if (event.currentTarget === event.target) setDraggingFiles(false) }} onDrop={(event) => { if (event.dataTransfer.files.length) void handleFileDrop(event) }}>
+    <div className="app-shell" onDragOver={(event) => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDraggingFiles(true) } }} onDragLeave={(event) => { if (event.currentTarget === event.target) setDraggingFiles(false) }} onDrop={(event) => { if (event.dataTransfer.files.length) void handleFileDrop(event) }}>
       <header className="titlebar"><div className="brand"><span className="vault-mark small">TV</span><span>TEMPVAULT</span><em>LOCAL ONLY</em></div><div className="title-actions"><button title="Ask the local agent" onClick={() => setPanel('agent')}>AI</button><button title="Toggle light mode" onClick={() => { const theme = snapshot.settings.theme === 'dark' ? 'light' : 'dark'; void window.tempVault.updateSettings({ theme, backgroundColor: theme === 'light' ? '#ffffff' : '#000000' }).then(refresh) }}>{snapshot.settings.theme === 'dark' ? '☼' : '◐'}</button></div></header>
       <aside className="sidebar">
         <div className="nav-section"><span>LIBRARY</span><Nav active={view === 'all'} label="All files" count={snapshot.items.length} glyph="01" onClick={() => setView('all')} /><Nav active={view === 'temporary'} label="Temporary" count={snapshot.totals.temporary} glyph="02" onClick={() => setView('temporary')} /><Nav active={view === 'kept'} label="Kept" count={snapshot.totals.kept} glyph="03" onClick={() => setView('kept')} /><Nav active={view === 'stale'} label="Review" count={snapshot.totals.stale} glyph="04" onClick={() => setView('stale')} /></div>
@@ -153,7 +153,7 @@ export default function App(): React.JSX.Element {
       </aside>
       <Dock onAdd={() => void perform('Added', () => window.tempVault.addFiles())} onInbox={() => void window.tempVault.openInbox()} onPreview={() => setPanel('preview')} onAgent={() => setPanel('agent')} onRefresh={() => void refresh()} onSettings={() => setSettingsOpen(true)} active={panel} />
       {contextMenu && <ContextMenu item={snapshot.items.find((item) => item.id === contextMenu.id)} x={contextMenu.x} y={contextMenu.y} onClose={() => setContextMenu(null)} onPreview={() => openPreview(contextMenu.id)} onFloat={() => { openPreview(contextMenu.id); createFloating(contextMenu.id) }} onPerform={perform} />}
-      {draggingFiles && <div className="file-drop"><div><b>DROP INTO TEMPVAULT</b><span>Files stay on this computer.</span></div></div>}
+      {draggingFiles && <div className="file-drop"><div><b>MOVE INTO TEMPVAULT</b><span>The originals leave their current folder. Mark files as Keep to protect them in the vault.</span></div></div>}
       {settingsOpen && <Settings snapshot={snapshot} onClose={() => setSettingsOpen(false)} onSaved={async () => { setSettingsOpen(false); await refresh(); setToast('Settings saved') }} />}
       {toast && <div className="toast">{toast}</div>}
     </div>

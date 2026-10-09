@@ -14,6 +14,7 @@ describe('VaultService', () => {
     const first = join(incoming, 'notes.txt')
     await writeFile(first, 'first')
     expect((await service.ingest([first])).failed).toHaveLength(0)
+    await expect(stat(first)).rejects.toMatchObject({ code: 'ENOENT' })
     await writeFile(first, 'second')
     await service.ingest([first])
     let snapshot = await service.snapshot()
@@ -22,6 +23,7 @@ describe('VaultService', () => {
     await service.changeStatus([snapshot.items[0].id], 'kept')
     snapshot = await service.snapshot()
     expect(snapshot.totals.kept).toBe(1)
+    await expect(stat(first)).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
   it('sorts stable inbox files and ignores partial downloads', async () => {

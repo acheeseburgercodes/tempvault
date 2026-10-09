@@ -254,7 +254,16 @@ async function movePath(source: string, destination: string): Promise<void> {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'EXDEV') throw error
     await cp(source, destination, { recursive: true, errorOnExist: true })
-    await rm(source, { recursive: true })
+    try {
+      await rm(source, { recursive: true })
+    } catch (removeError) {
+      await rm(destination, { recursive: true, force: true }).catch(() => undefined)
+      throw new Error(`Could not remove the original after copying to the vault: ${errorMessage(removeError)}`)
+    }
+  }
+  if (await pathExists(source)) {
+    await rm(destination, { recursive: true, force: true }).catch(() => undefined)
+    throw new Error('Move verification failed: the original file is still present')
   }
 }
 
