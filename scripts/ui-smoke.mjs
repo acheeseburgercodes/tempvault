@@ -38,7 +38,10 @@ const result = await evaluate(`(async () => {
   const workspaceStyle = getComputedStyle(document.querySelector('.workspace'))
   const shellStyle = getComputedStyle(document.querySelector('.app-shell'))
   if (sidebarStyle.backdropFilter === 'none') throw new Error('Sidebar glass blur is missing')
-  if (shellStyle.backgroundColor !== 'rgba(0, 0, 0, 0)' || workspaceStyle.backgroundColor === 'rgba(0, 0, 0, 0)') throw new Error('Transparency is not limited to the sidebar region')
+  if (shellStyle.backgroundColor === 'rgba(0, 0, 0, 0)' || workspaceStyle.backgroundColor === 'rgba(0, 0, 0, 0)') throw new Error('Opaque panel canvas is missing')
+  const leftOutline = getComputedStyle(document.querySelector('.sidebar'), '::after')
+  const rightOutline = getComputedStyle(document.querySelector('.right-rail'), '::after')
+  if (leftOutline.borderTopColor !== rightOutline.borderTopColor || leftOutline.borderTopWidth !== rightOutline.borderTopWidth || leftOutline.borderRadius !== rightOutline.borderRadius) throw new Error('Side panel outlines do not match')
   const dock = document.querySelector('.app-dock')
   const dockBounds = dock.getBoundingClientRect()
   const workspaceBounds = document.querySelector('.workspace').getBoundingClientRect()
@@ -91,6 +94,7 @@ const result = await evaluate(`(async () => {
     maxRowHeight,
     dockOffset,
     sidebarGlass: { background: sidebarStyle.backgroundColor, blur: sidebarStyle.backdropFilter },
+    panelOutline: { color: leftOutline.borderTopColor, width: leftOutline.borderTopWidth, radius: leftOutline.borderRadius },
     themedSidebarGlass: { background: themedSidebarStyle.backgroundColor, blur: themedSidebarStyle.backdropFilter },
     lightSelection: { activeNavBackground, bulkBackground },
     previewCheck,
