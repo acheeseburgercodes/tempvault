@@ -154,7 +154,7 @@ export default function App(): React.JSX.Element {
 
       <aside className="right-rail" onDragOver={(event) => { if (event.dataTransfer.types.includes('application/x-tempvault-file')) { event.preventDefault(); event.currentTarget.classList.add('drop-ready') } }} onDragLeave={(event) => event.currentTarget.classList.remove('drop-ready')} onDrop={(event) => { event.preventDefault(); event.currentTarget.classList.remove('drop-ready'); const id = event.dataTransfer.getData('application/x-tempvault-file'); if (id) openPreview(id) }}>
         <div className="rail-tabs"><button className={panel === 'preview' ? 'active' : ''} onClick={() => setPanel('preview')}>PREVIEW <span>{previewOrder.length}</span></button><button className={panel === 'agent' ? 'active' : ''} onClick={() => setPanel('agent')}>ASK AI</button></div>
-        {panel === 'preview' ? <PreviewRail order={previewOrder} previews={previews} onOrder={setPreviewOrder} onFloat={createFloating} onMove={(id, x, y) => { createFloating(id, x, y); setPreviewOrder((current) => current.filter((value) => value !== id)) }} onRemove={(id) => setPreviewOrder((current) => current.filter((value) => value !== id))} /> : <AgentPanel selectedIds={[...selected]} settings={snapshot.settings} onSettings={() => setSettingsOpen(true)} />}
+        {panel === 'preview' ? <PreviewRail order={previewOrder} previews={previews} onFloat={createFloating} onMove={(id, x, y) => { createFloating(id, x, y); setPreviewOrder((current) => current.filter((value) => value !== id)) }} onRemove={(id) => setPreviewOrder((current) => current.filter((value) => value !== id))} /> : <AgentPanel selectedIds={[...selected]} settings={snapshot.settings} onSettings={() => setSettingsOpen(true)} />}
       </aside>
       <Dock onAdd={() => void perform('Added', () => window.tempVault.addFiles())} onInbox={() => void window.tempVault.openInbox()} onPreview={() => setPanel('preview')} onAgent={() => setPanel('agent')} onZoomIn={() => void changeZoom('in')} onZoomOut={() => void changeZoom('out')} onRefresh={() => void refresh()} onSettings={() => setSettingsOpen(true)} active={panel} />
       {contextMenu && <ContextMenu item={snapshot.items.find((item) => item.id === contextMenu.id)} x={contextMenu.x} y={contextMenu.y} onClose={() => setContextMenu(null)} onPreview={() => openPreview(contextMenu.id)} onFloat={() => { openPreview(contextMenu.id); createFloating(contextMenu.id) }} onPerform={perform} />}
@@ -197,10 +197,17 @@ function ContextMenu({ item, x, y, onClose, onPreview, onFloat, onPerform }: { i
   return <div className="context-menu" style={{ left, top }} onPointerDown={(event) => event.stopPropagation()}><header><i><FileIcon item={item} /></i><div><strong>{item.name}</strong><span>{fileTypeLabel(item)} · {formatBytes(item.size)}</span></div></header><button onClick={() => action(onPreview)}><span>Open in preview rail</span><kbd>↵</kbd></button><button onClick={() => action(onFloat)}><span>Open floating preview</span><kbd>↗</kbd></button><hr /><button onClick={() => action(() => void window.tempVault.openItem(item.id))}><span>Open with default app</span><kbd>↥</kbd></button><button onClick={() => action(() => void window.tempVault.revealItem(item.id))}><span>Show in File Explorer</span><kbd>⌕</kbd></button><hr /><button onClick={() => action(() => void onPerform(item.status === 'kept' ? 'Temporary' : 'Kept', () => item.status === 'kept' ? window.tempVault.restore([item.id]) : window.tempVault.keep([item.id])))}><span>{item.status === 'kept' ? 'Make temporary' : 'Keep this file'}</span><kbd>★</kbd></button><button onClick={() => action(() => void onPerform('Moved', () => window.tempVault.moveOut([item.id])))}><span>Remove from TempVault…</span><kbd>→</kbd></button><button className="danger" onClick={() => action(() => { if (window.confirm(`Send ${item.name} to the Recycle Bin?`)) void onPerform('Recycled', () => window.tempVault.trash([item.id])) })}><span>Move to Recycle Bin</span><kbd>⌫</kbd></button></div>
 }
 
-function PreviewRail({ order, previews, onOrder, onFloat, onMove, onRemove }: { order: string[]; previews: Record<string, FilePreview>; onOrder(ids: string[]): void; onFloat(id: string): void; onMove(id: string, x: number, y: number): void; onRemove(id: string): void }): React.JSX.Element {
+function PreviewRail({ order, previews, onFloat, onMove, onRemove }: { order: string[]; previews: Record<string, FilePreview>; onFloat(id: string): void; onMove(id: string, x: number, y: number): void; onRemove(id: string): void }): React.JSX.Element {
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({})
   const surfaceRef = useRef<HTMLDivElement>(null)
+  const cardHeight = 292; const fieldGap = 24
   function positionFor(id: string): { x: number; y: number } { const index = order.indexOf(id); return positions[id] ?? { x: 12, y: 12 + Math.max(0, index) * 316 } }
+  function settlePositions(movedId: string, desired: { x: number; y: number }): Record<string, { x: number; y: number }> {
+    const entries = order.map((id) => ({ id, ...(id === movedId ? desired : positionFor(id)) })).sort((a, b) => a.y - b.y)
+    let cursor = 12; const settled: Record<string, { x: number; y: number }> = {}
+    for (const entry of entries) { const y = Math.max(entry.y, cursor); settled[entry.id] = { x: entry.x, y }; cursor = y + cardHeight + fieldGap }
+    return settled
+  }
   function startInteractiveMove(event: React.PointerEvent<HTMLElement>, id: string): void {
     if ((event.target as HTMLElement).closest('button')) return
     event.preventDefault()
@@ -211,12 +218,12 @@ function PreviewRail({ order, previews, onOrder, onFloat, onMove, onRemove }: { 
     const move = (next: PointerEvent): void => {
       const dx = next.clientX - startX; const dy = next.clientY - startY
       if (!active && Math.hypot(dx, dy) < 4) return
-      active = true; card.classList.add('interactive-moving')
+      active = true; card.classList.add('interactive-moving'); surfaceRef.current?.classList.add('force-active')
       card.style.position = 'fixed'; card.style.left = `${bounds.left + dx}px`; card.style.top = `${bounds.top + dy}px`; card.style.width = `${bounds.width}px`; card.style.height = `${bounds.height}px`
     }
     const up = (next: PointerEvent): void => {
       window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up)
-      card.classList.remove('interactive-moving'); card.style.removeProperty('position'); card.style.removeProperty('left'); card.style.removeProperty('top'); card.style.removeProperty('width'); card.style.removeProperty('height')
+      card.classList.remove('interactive-moving'); surfaceRef.current?.classList.remove('force-active'); card.style.removeProperty('position'); card.style.removeProperty('left'); card.style.removeProperty('top'); card.style.removeProperty('width'); card.style.removeProperty('height')
       if (!active) return
       const workspace = document.querySelector('.workspace')?.getBoundingClientRect()
       if (workspace && next.clientX >= workspace.left && next.clientX <= workspace.right && next.clientY >= workspace.top && next.clientY <= workspace.bottom) { onMove(id, next.clientX, next.clientY); return }
@@ -224,13 +231,13 @@ function PreviewRail({ order, previews, onOrder, onFloat, onMove, onRemove }: { 
       if (surface && rail && next.clientX >= rail.left && next.clientX <= rail.right && next.clientY >= rail.top && next.clientY <= rail.bottom) {
         const x = Math.max(12, Math.min(surface.clientWidth - bounds.width - 12, next.clientX - rail.left + surface.scrollLeft - bounds.width / 2))
         const y = Math.max(12, next.clientY - rail.top + surface.scrollTop - 24)
-        setPositions((current) => ({ ...current, [id]: { x, y } })); onOrder([...order.filter((value) => value !== id), id])
+        setPositions(settlePositions(id, { x, y }))
       }
     }
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
   }
   if (!order.length) return <div className="rail-empty"><div><UiIcon name="preview" /></div><b>SELECT FILES TO PREVIEW</b><p>Choose one or many file records. Drag a preview card into the workspace to move it.</p></div>
-  const surfaceHeight = Math.max(620, ...order.map((id) => positionFor(id).y + 304))
+  const surfaceHeight = Math.max(640, ...order.map((id) => positionFor(id).y + cardHeight + fieldGap))
   return <div className="preview-grid" ref={surfaceRef} style={{ '--preview-surface-height': `${surfaceHeight}px` } as React.CSSProperties}>{order.map((id) => { const position = positionFor(id); return <article className="preview-widget" data-preview-id={id} key={id} style={{ left: position.x, top: position.y }} onPointerDown={(event) => startInteractiveMove(event, id)}><header><span className="preview-file-icon">{previews[id] ? <FileIcon item={previews[id].item} /> : <UiIcon name="file" />}</span><strong>{previews[id]?.item.name ?? 'Loading…'}</strong><button title="Move into workspace" onClick={() => { onFloat(id); onRemove(id) }}><UiIcon name="detach" /></button><button title="Close preview" onClick={() => onRemove(id)}>×</button></header><PreviewContent preview={previews[id]} compact /></article> })}<div className="preview-surface-end" /></div>
 }
 
@@ -265,13 +272,28 @@ function AgentPanel({ selectedIds, settings, onSettings }: { selectedIds: string
   const [question, setQuestion] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [thinking, setThinking] = useState(false)
+  const [datasetQuestion, setDatasetQuestion] = useState('')
+  const [datasetAnswer, setDatasetAnswer] = useState('')
+  const [datasetSource, setDatasetSource] = useState('')
+  const [examples, setExamples] = useState<Array<{ question: string; answer: string; source: string }>>([])
+  const [datasetNotice, setDatasetNotice] = useState('')
   useEffect(() => { void window.tempVault.getAgentStatus().then(setStatus) }, [settings.agentModel])
   async function ask(): Promise<void> {
     const value = question.trim(); if (!value || thinking) return
     setMessages((current) => [...current, { role: 'user', content: value }]); setQuestion(''); setThinking(true)
     try { const answer = await window.tempVault.askAgent(value, selectedIds); setMessages((current) => [...current, { role: 'assistant', content: answer.answer, answer }]) } catch (error) { setMessages((current) => [...current, { role: 'assistant', content: error instanceof Error ? error.message : String(error) }]) } finally { setThinking(false) }
   }
-  return <div className="agent-panel"><div className="agent-status"><div><i className={status?.available ? 'online' : ''} /><span>{status?.message ?? 'Checking local runtime…'}</span></div><button onClick={onSettings}>CONFIGURE</button></div><div className="agent-intro"><b>FILE AGENT</b><p>Answers from your local vault using <strong>{settings.agentModel}</strong>. File data is sent only to Ollama at 127.0.0.1.</p><span>{selectedIds.length ? `${selectedIds.length} selected files prioritized · all vault files available` : 'All vault files available as context'}</span></div><div className="chat-log">{messages.map((message, index) => <div key={index} className={`message ${message.role}`}><small>{message.role === 'user' ? 'YOU' : 'LOCAL AGENT'}</small><p>{message.content}</p>{message.answer && <span>{message.answer.sources.length} files supplied · {message.answer.model}</span>}</div>)}{thinking && <div className="message assistant"><small>LOCAL AGENT</small><p className="thinking">READING FILES…</p></div>}</div><div className="composer"><textarea value={question} onChange={(event) => setQuestion(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void ask() } }} placeholder="Ask anything about your files…" /><div><span>ENTER TO SEND · LOCAL ONLY</span><button disabled={!question.trim() || thinking} onClick={() => void ask()}>↑</button></div></div></div>
+  function addExample(): void {
+    if (!datasetQuestion.trim() || !datasetAnswer.trim()) return
+    setExamples((current) => [...current, { question: datasetQuestion.trim(), answer: datasetAnswer.trim(), source: datasetSource.trim() }])
+    setDatasetQuestion(''); setDatasetAnswer(''); setDatasetSource(''); setDatasetNotice('Example added')
+  }
+  async function copyDataset(): Promise<void> {
+    const system = 'You are TempVault Agent. Ground every answer in supplied file context, cite filenames in square brackets, and never invent file contents.'
+    const jsonl = examples.map((example) => JSON.stringify({ messages: [{ role: 'system', content: system }, { role: 'user', content: example.source ? `Source: ${example.source}\n${example.question}` : example.question }, { role: 'assistant', content: example.answer }] })).join('\n')
+    await navigator.clipboard.writeText(jsonl); setDatasetNotice(`${examples.length} JSONL example${examples.length === 1 ? '' : 's'} copied`)
+  }
+  return <div className="agent-panel"><div className="agent-status"><div><i className={status?.available ? 'online' : ''} /><span>{status?.message ?? 'Checking local runtime…'}</span></div><button onClick={onSettings}>CONFIGURE</button></div><div className="agent-intro"><b>FILE AGENT</b><p>Answers from your local vault using <strong>{settings.agentModel}</strong>. File data is sent only to Ollama at 127.0.0.1.</p><span>{selectedIds.length ? `${selectedIds.length} selected files prioritized · all vault files available` : 'All vault files available as context'}</span></div><details className="training-panel" open><summary>TRAIN LOCAL MODEL <span>DATASET + STEPS</span></summary><div className="training-content"><ol><li>Create representative question/answer examples below; remove private data you do not want memorized.</li><li>Copy the JSONL and fine-tune <strong>gemma3:4b</strong> externally with LoRA/QLoRA using LLaMA-Factory, Axolotl, or Unsloth.</li><li>Export the result as GGUF, then create <code>tempvault-agent</code> with Ollama.</li></ol><code className="training-command">ollama create tempvault-agent -f .\Modelfile</code><div className="dataset-form"><input value={datasetSource} onChange={(event) => setDatasetSource(event.target.value)} placeholder="Source filename or context label" /><textarea value={datasetQuestion} onChange={(event) => setDatasetQuestion(event.target.value)} placeholder="Training question" /><textarea value={datasetAnswer} onChange={(event) => setDatasetAnswer(event.target.value)} placeholder="Ideal grounded answer" /><div><span>{examples.length} EXAMPLES · {datasetNotice}</span><button disabled={!datasetQuestion.trim() || !datasetAnswer.trim()} onClick={addExample}>ADD EXAMPLE</button><button disabled={!examples.length} onClick={() => void copyDataset()}>COPY JSONL</button></div></div></div></details><div className="chat-log">{messages.map((message, index) => <div key={index} className={`message ${message.role}`}><small>{message.role === 'user' ? 'YOU' : 'LOCAL AGENT'}</small><p>{message.content}</p>{message.answer && <span>{message.answer.sources.length} files supplied · {message.answer.model}</span>}</div>)}{thinking && <div className="message assistant"><small>LOCAL AGENT</small><p className="thinking">READING FILES…</p></div>}</div><div className="composer"><textarea value={question} onChange={(event) => setQuestion(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void ask() } }} placeholder="Ask anything about your files…" /><div><span>ENTER TO SEND · LOCAL ONLY</span><button disabled={!question.trim() || thinking} onClick={() => void ask()}>↑</button></div></div></div>
 }
 
 function Dock({ onAdd, onInbox, onPreview, onAgent, onZoomIn, onZoomOut, onRefresh, onSettings, active }: { onAdd(): void; onInbox(): void; onPreview(): void; onAgent(): void; onZoomIn(): void; onZoomOut(): void; onRefresh(): void; onSettings(): void; active: Panel }): React.JSX.Element {
@@ -286,7 +308,9 @@ function Dock({ onAdd, onInbox, onPreview, onAgent, onZoomIn, onZoomOut, onRefre
 
 function FileIcon({ item }: { item: VaultItem }): React.JSX.Element {
   const name = item.category === 'Images' ? 'image' : item.category === 'Audio' ? 'audio' : item.category === 'Videos' ? 'video' : item.category === 'Folders' ? 'folder' : item.category === 'Archives' ? 'archive' : item.category === 'Code' ? 'code' : 'file'
-  return <UiIcon name={name} />
+  const extension = item.extension.toLowerCase()
+  const color = ['doc', 'docx'].includes(extension) ? '#2b6cb0' : extension === 'pdf' ? '#e53935' : ['xls', 'xlsx', 'csv'].includes(extension) ? '#16835d' : ['ppt', 'pptx'].includes(extension) ? '#d65a31' : item.category === 'Archives' ? '#f59e0b' : item.category === 'Images' ? '#a855f7' : item.category === 'Audio' ? '#ec4899' : item.category === 'Videos' ? '#06b6d4' : item.category === 'Code' ? '#3b82f6' : item.category === 'Folders' ? '#eab308' : '#64748b'
+  return <span className="file-type-icon" style={{ '--file-color': color } as React.CSSProperties}><UiIcon name={name} /></span>
 }
 
 function UiIcon({ name }: { name: string }): React.JSX.Element {
