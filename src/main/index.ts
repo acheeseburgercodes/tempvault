@@ -37,6 +37,12 @@ function createWindow(): void {
     if (url.startsWith('https://')) void shell.openExternal(url)
     return { action: 'deny' }
   })
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (!(input.control || input.meta) || input.type !== 'keyDown') return
+    if (input.key === '+' || input.key === '=') { event.preventDefault(); applyZoom('in') }
+    else if (input.key === '-') { event.preventDefault(); applyZoom('out') }
+    else if (input.key === '0') { event.preventDefault(); applyZoom('reset') }
+  })
 
   if (is.dev && process.env.ELECTRON_RENDERER_URL) mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
   else mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
@@ -104,6 +110,7 @@ function registerIpc(): void {
   ipcMain.handle('agent:status', () => getAgentStatus(service))
   ipcMain.handle('agent:ask', (_event, question: string, focusedIds?: string[]) => askLocalAgent(service, question, focusedIds))
   ipcMain.handle('vault:open-inbox', () => shell.openPath(service.inbox))
+  ipcMain.handle('app:zoom', (_event, direction: 'in' | 'out' | 'reset') => applyZoom(direction))
   ipcMain.handle('vault:update-settings', async (_event, patch: Partial<Pick<VaultSettings, 'staleDays' | 'launchAtStartup' | 'theme' | 'agentModel' | 'accentColor' | 'backgroundColor' | 'windowOpacity'>>) => {
     const current = await service.getSettings()
     const settings: VaultSettings = {
@@ -122,6 +129,14 @@ function registerIpc(): void {
     await notifyChanged()
     return settings
   })
+}
+
+function applyZoom(direction: 'in' | 'out' | 'reset'): number {
+  if (!mainWindow) return 1
+  const current = mainWindow.webContents.getZoomFactor()
+  const next = direction === 'reset' ? 1 : Math.max(0.75, Math.min(1.5, current + (direction === 'in' ? 0.1 : -0.1)))
+  mainWindow.webContents.setZoomFactor(Number(next.toFixed(2)))
+  return Number(next.toFixed(2))
 }
 
 async function finish(operation: Promise<OperationResult>): Promise<OperationResult> {

@@ -79,6 +79,9 @@ export interface TempVaultApi {
   getAgentStatus(): Promise<AgentStatus>
   askAgent(question: string, focusedIds?: string[]): Promise<AgentAnswer>
   openInbox(): Promise<void>
+  zoomIn(): Promise<number>
+  zoomOut(): Promise<number>
+  zoomReset(): Promise<number>
   updateSettings(settings: Partial<Pick<VaultSettings, 'staleDays' | 'launchAtStartup' | 'theme' | 'agentModel' | 'accentColor' | 'backgroundColor' | 'windowOpacity'>>): Promise<VaultSettings>
   onVaultChanged(callback: () => void): () => void
 }

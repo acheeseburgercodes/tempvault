@@ -32,6 +32,9 @@ const result = await evaluate(`(async () => {
   const rowsDoNotOverflow = rows.every((row) => row.scrollWidth <= row.clientWidth + 1)
   const rowsStackVertically = rows.every((row, index) => index === 0 || row.getBoundingClientRect().top >= rows[index - 1].getBoundingClientRect().bottom - 1)
   if (!rowsAreSeparate || !rowsDoNotOverflow || !rowsStackVertically) throw new Error('File record layout overlaps or overflows')
+  if (rows.some((row) => !row.querySelector('.record-name svg'))) throw new Error('File list icons did not render')
+  const wordRow = rows.find((row) => row.querySelector('.record-name strong')?.textContent?.toLowerCase().endsWith('.docx'))
+  if (wordRow && !wordRow.textContent.includes('MICROSOFT WORD')) throw new Error('Specific Word file type is missing')
   const maxRowHeight = Math.max(0, ...rows.map((row) => row.getBoundingClientRect().height))
   if (maxRowHeight > 55) throw new Error('File records are no longer compact')
   const sidebarStyle = getComputedStyle(document.querySelector('.sidebar'))
@@ -61,6 +64,19 @@ const result = await evaluate(`(async () => {
     const widgets = document.querySelectorAll('.preview-widget')
     if (widgets.length !== 2) throw new Error('Multi-file previews did not render')
     if ([...widgets].some((widget) => !widget.querySelector('.preview-file-icon svg'))) throw new Error('Preview file icons did not render')
+    if ([...widgets].some((widget) => widget.getBoundingClientRect().height < 290)) throw new Error('Preview cards are too small')
+    const arrangedCard = widgets[1]
+    const arrangedId = arrangedCard.dataset.previewId
+    const arrangedBefore = Number.parseFloat(arrangedCard.style.top)
+    const arrangedBounds = arrangedCard.getBoundingClientRect()
+    const railBounds = document.querySelector('.preview-grid').getBoundingClientRect()
+    const arrangedTargetY = Math.min(railBounds.bottom - 45, arrangedBounds.top + 110)
+    arrangedCard.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 2, buttons: 1, clientX: arrangedBounds.left + 30, clientY: arrangedBounds.top + 20 }))
+    window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 2, buttons: 1, clientX: arrangedBounds.left + 30, clientY: arrangedTargetY }))
+    window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 2, clientX: arrangedBounds.left + 30, clientY: arrangedTargetY }))
+    await pause(100)
+    const arrangedAfter = document.querySelector('[data-preview-id="' + arrangedId + '"]')
+    if (!arrangedAfter || Number.parseFloat(arrangedAfter.style.top) <= arrangedBefore) throw new Error('Preview card vanished or did not retain its lower position')
     const docxWidget = [...widgets].find((widget) => widget.querySelector('header strong')?.textContent?.toLowerCase().endsWith('.docx'))
     if (docxWidget) {
       const wordText = docxWidget.querySelector('.text-preview')?.textContent?.trim() || ''
@@ -88,6 +104,10 @@ const result = await evaluate(`(async () => {
   if (theme === 'light' && (activeNavBackground === 'rgb(0, 0, 0)' || bulkBackground === 'rgb(0, 0, 0)')) throw new Error('Light mode still uses black selected panels')
   document.querySelectorAll('.rail-tabs button')[1].click()
   await pause(2300)
+  const zoomedIn = await window.tempVault.zoomIn()
+  const zoomedOut = await window.tempVault.zoomOut()
+  const zoomReset = await window.tempVault.zoomReset()
+  if (!(zoomedIn > zoomedOut) || zoomReset !== 1) throw new Error('Zoom controls failed')
   return {
     records: rows.length,
     layoutCheck: 'passed',
@@ -105,7 +125,8 @@ const result = await evaluate(`(async () => {
     agentPanel: Boolean(document.querySelector('.agent-panel')),
     agentStatus: document.querySelector('.agent-status')?.textContent?.trim(),
     railText: document.querySelector('.right-rail')?.textContent?.slice(0, 300),
-    heading: document.querySelector('h1')?.textContent
+    heading: document.querySelector('h1')?.textContent,
+    zoom: { zoomedIn, zoomedOut, zoomReset }
   }
 })()`)
 

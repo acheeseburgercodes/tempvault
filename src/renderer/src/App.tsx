@@ -120,6 +120,11 @@ export default function App(): React.JSX.Element {
     if (selected.size && window.confirm(`Send ${selected.size} selected item${selected.size === 1 ? '' : 's'} to the Recycle Bin?`)) await perform('Recycled', () => window.tempVault.trash([...selected]))
   }
 
+  async function changeZoom(action: 'in' | 'out' | 'reset'): Promise<void> {
+    const factor = await (action === 'in' ? window.tempVault.zoomIn() : action === 'out' ? window.tempVault.zoomOut() : window.tempVault.zoomReset())
+    setToast(`Zoom ${Math.round(factor * 100)}%`)
+  }
+
   if (!snapshot) return <div className="loading"><div className="vault-mark">TV</div><span>OPENING VAULT</span></div>
   const selectedItems = snapshot.items.filter((item) => selected.has(item.id))
 
@@ -151,7 +156,7 @@ export default function App(): React.JSX.Element {
         <div className="rail-tabs"><button className={panel === 'preview' ? 'active' : ''} onClick={() => setPanel('preview')}>PREVIEW <span>{previewOrder.length}</span></button><button className={panel === 'agent' ? 'active' : ''} onClick={() => setPanel('agent')}>ASK AI</button></div>
         {panel === 'preview' ? <PreviewRail order={previewOrder} previews={previews} onOrder={setPreviewOrder} onFloat={createFloating} onMove={(id, x, y) => { createFloating(id, x, y); setPreviewOrder((current) => current.filter((value) => value !== id)) }} onRemove={(id) => setPreviewOrder((current) => current.filter((value) => value !== id))} /> : <AgentPanel selectedIds={[...selected]} settings={snapshot.settings} onSettings={() => setSettingsOpen(true)} />}
       </aside>
-      <Dock onAdd={() => void perform('Added', () => window.tempVault.addFiles())} onInbox={() => void window.tempVault.openInbox()} onPreview={() => setPanel('preview')} onAgent={() => setPanel('agent')} onRefresh={() => void refresh()} onSettings={() => setSettingsOpen(true)} active={panel} />
+      <Dock onAdd={() => void perform('Added', () => window.tempVault.addFiles())} onInbox={() => void window.tempVault.openInbox()} onPreview={() => setPanel('preview')} onAgent={() => setPanel('agent')} onZoomIn={() => void changeZoom('in')} onZoomOut={() => void changeZoom('out')} onRefresh={() => void refresh()} onSettings={() => setSettingsOpen(true)} active={panel} />
       {contextMenu && <ContextMenu item={snapshot.items.find((item) => item.id === contextMenu.id)} x={contextMenu.x} y={contextMenu.y} onClose={() => setContextMenu(null)} onPreview={() => openPreview(contextMenu.id)} onFloat={() => { openPreview(contextMenu.id); createFloating(contextMenu.id) }} onPerform={perform} />}
       {draggingFiles && <div className="file-drop"><div><b>MOVE INTO TEMPVAULT</b><span>The originals leave their current folder. Mark files as Keep to protect them in the vault.</span></div></div>}
       {settingsOpen && <Settings snapshot={snapshot} onClose={() => setSettingsOpen(false)} onSaved={async () => { setSettingsOpen(false); await refresh(); setToast('Settings saved') }} />}
@@ -181,45 +186,52 @@ function Metric({ label, value }: { label: string; value: number }): React.JSX.E
 function SortButton({ label, column, sort, onClick }: { label: string; column: SortKey; sort: { key: SortKey; descending: boolean }; onClick(key: SortKey): void }): React.JSX.Element { return <button onClick={() => onClick(column)}>{label}{sort.key === column ? (sort.descending ? ' ↓' : ' ↑') : ''}</button> }
 
 function FileRecord({ item, active, stale, onToggle, onSelect, onPreview, onContext }: { item: VaultItem; active: boolean; stale: boolean; onToggle(id: string): void; onSelect(event: React.MouseEvent, id: string): void; onPreview(): void; onContext(event: React.MouseEvent): void }): React.JSX.Element {
-  return <div className={`record-row ${active ? 'active' : ''}`} draggable onDragStart={(event) => { event.dataTransfer.setData('application/x-tempvault-file', item.id); event.dataTransfer.effectAllowed = 'copy'; event.currentTarget.classList.add('dragging') }} onDragEnd={(event) => event.currentTarget.classList.remove('dragging')} onContextMenu={onContext} onClick={(event) => onSelect(event, item.id)} onDoubleClick={onPreview}><div onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={active} onChange={() => onToggle(item.id)} /></div><div className="record-name"><i>{icons[item.category]}</i><div><strong title={item.name}>{item.name}</strong><small>{item.extension ? `.${item.extension}` : 'DIRECTORY'} · {shortPath(item.path)}</small></div></div><span>{item.category.toUpperCase()}</span><span className="state-tag">{stale ? 'REVIEW' : item.status.toUpperCase()}</span><span>{formatBytes(item.size)}</span><span>{relativeDate(item.modifiedAt)}</span><button title="Preview" onClick={(event) => { event.stopPropagation(); onPreview() }}>→</button></div>
+  const type = fileTypeLabel(item)
+  return <div className={`record-row ${active ? 'active' : ''}`} draggable onDragStart={(event) => { event.dataTransfer.setData('application/x-tempvault-file', item.id); event.dataTransfer.effectAllowed = 'copy'; event.currentTarget.classList.add('dragging') }} onDragEnd={(event) => event.currentTarget.classList.remove('dragging')} onContextMenu={onContext} onClick={(event) => onSelect(event, item.id)} onDoubleClick={onPreview}><div onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={active} onChange={() => onToggle(item.id)} /></div><div className="record-name"><i><FileIcon item={item} /></i><div><strong title={item.name}>{item.name}</strong><small>{type.toUpperCase()} · {shortPath(item.path)}</small></div></div><span title={type}>{type.toUpperCase()}</span><span className="state-tag">{stale ? 'REVIEW' : item.status.toUpperCase()}</span><span>{formatBytes(item.size)}</span><span>{relativeDate(item.modifiedAt)}</span><button title="Preview" onClick={(event) => { event.stopPropagation(); onPreview() }}>→</button></div>
 }
 
 function ContextMenu({ item, x, y, onClose, onPreview, onFloat, onPerform }: { item?: VaultItem; x: number; y: number; onClose(): void; onPreview(): void; onFloat(): void; onPerform(label: string, task: () => Promise<OperationResult>): Promise<void> }): React.JSX.Element | null {
   if (!item) return null
   const left = Math.min(x, window.innerWidth - 230); const top = Math.min(y, window.innerHeight - 330)
   const action = (task: () => void): void => { onClose(); task() }
-  return <div className="context-menu" style={{ left, top }} onPointerDown={(event) => event.stopPropagation()}><header><i>{icons[item.category]}</i><div><strong>{item.name}</strong><span>{item.category} · {formatBytes(item.size)}</span></div></header><button onClick={() => action(onPreview)}><span>Open in preview rail</span><kbd>↵</kbd></button><button onClick={() => action(onFloat)}><span>Open floating preview</span><kbd>↗</kbd></button><hr /><button onClick={() => action(() => void window.tempVault.openItem(item.id))}><span>Open with default app</span><kbd>↥</kbd></button><button onClick={() => action(() => void window.tempVault.revealItem(item.id))}><span>Show in File Explorer</span><kbd>⌕</kbd></button><hr /><button onClick={() => action(() => void onPerform(item.status === 'kept' ? 'Temporary' : 'Kept', () => item.status === 'kept' ? window.tempVault.restore([item.id]) : window.tempVault.keep([item.id])))}><span>{item.status === 'kept' ? 'Make temporary' : 'Keep this file'}</span><kbd>★</kbd></button><button onClick={() => action(() => void onPerform('Moved', () => window.tempVault.moveOut([item.id])))}><span>Remove from TempVault…</span><kbd>→</kbd></button><button className="danger" onClick={() => action(() => { if (window.confirm(`Send ${item.name} to the Recycle Bin?`)) void onPerform('Recycled', () => window.tempVault.trash([item.id])) })}><span>Move to Recycle Bin</span><kbd>⌫</kbd></button></div>
+  return <div className="context-menu" style={{ left, top }} onPointerDown={(event) => event.stopPropagation()}><header><i><FileIcon item={item} /></i><div><strong>{item.name}</strong><span>{fileTypeLabel(item)} · {formatBytes(item.size)}</span></div></header><button onClick={() => action(onPreview)}><span>Open in preview rail</span><kbd>↵</kbd></button><button onClick={() => action(onFloat)}><span>Open floating preview</span><kbd>↗</kbd></button><hr /><button onClick={() => action(() => void window.tempVault.openItem(item.id))}><span>Open with default app</span><kbd>↥</kbd></button><button onClick={() => action(() => void window.tempVault.revealItem(item.id))}><span>Show in File Explorer</span><kbd>⌕</kbd></button><hr /><button onClick={() => action(() => void onPerform(item.status === 'kept' ? 'Temporary' : 'Kept', () => item.status === 'kept' ? window.tempVault.restore([item.id]) : window.tempVault.keep([item.id])))}><span>{item.status === 'kept' ? 'Make temporary' : 'Keep this file'}</span><kbd>★</kbd></button><button onClick={() => action(() => void onPerform('Moved', () => window.tempVault.moveOut([item.id])))}><span>Remove from TempVault…</span><kbd>→</kbd></button><button className="danger" onClick={() => action(() => { if (window.confirm(`Send ${item.name} to the Recycle Bin?`)) void onPerform('Recycled', () => window.tempVault.trash([item.id])) })}><span>Move to Recycle Bin</span><kbd>⌫</kbd></button></div>
 }
 
 function PreviewRail({ order, previews, onOrder, onFloat, onMove, onRemove }: { order: string[]; previews: Record<string, FilePreview>; onOrder(ids: string[]): void; onFloat(id: string): void; onMove(id: string, x: number, y: number): void; onRemove(id: string): void }): React.JSX.Element {
+  const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({})
+  const surfaceRef = useRef<HTMLDivElement>(null)
+  function positionFor(id: string): { x: number; y: number } { const index = order.indexOf(id); return positions[id] ?? { x: 12, y: 12 + Math.max(0, index) * 316 } }
   function startInteractiveMove(event: React.PointerEvent<HTMLElement>, id: string): void {
     if ((event.target as HTMLElement).closest('button')) return
     event.preventDefault()
     const card = event.currentTarget
+    const bounds = card.getBoundingClientRect()
     const startX = event.clientX; const startY = event.clientY
     let active = false
     const move = (next: PointerEvent): void => {
       const dx = next.clientX - startX; const dy = next.clientY - startY
       if (!active && Math.hypot(dx, dy) < 4) return
       active = true; card.classList.add('interactive-moving')
-      card.style.setProperty('--move-x', `${dx}px`); card.style.setProperty('--move-y', `${dy}px`)
+      card.style.position = 'fixed'; card.style.left = `${bounds.left + dx}px`; card.style.top = `${bounds.top + dy}px`; card.style.width = `${bounds.width}px`; card.style.height = `${bounds.height}px`
     }
     const up = (next: PointerEvent): void => {
       window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up)
-      card.classList.remove('interactive-moving'); card.style.removeProperty('--move-x'); card.style.removeProperty('--move-y')
+      card.classList.remove('interactive-moving'); card.style.removeProperty('position'); card.style.removeProperty('left'); card.style.removeProperty('top'); card.style.removeProperty('width'); card.style.removeProperty('height')
       if (!active) return
       const workspace = document.querySelector('.workspace')?.getBoundingClientRect()
       if (workspace && next.clientX >= workspace.left && next.clientX <= workspace.right && next.clientY >= workspace.top && next.clientY <= workspace.bottom) { onMove(id, next.clientX, next.clientY); return }
-      card.style.pointerEvents = 'none'
-      const target = document.elementFromPoint(next.clientX, next.clientY)?.closest<HTMLElement>('.preview-widget')
-      card.style.pointerEvents = ''
-      const targetId = target?.dataset.previewId
-      if (targetId && targetId !== id) { const reordered = order.filter((value) => value !== id); reordered.splice(reordered.indexOf(targetId), 0, id); onOrder(reordered) }
+      const surface = surfaceRef.current; const rail = surface?.getBoundingClientRect()
+      if (surface && rail && next.clientX >= rail.left && next.clientX <= rail.right && next.clientY >= rail.top && next.clientY <= rail.bottom) {
+        const x = Math.max(12, Math.min(surface.clientWidth - bounds.width - 12, next.clientX - rail.left + surface.scrollLeft - bounds.width / 2))
+        const y = Math.max(12, next.clientY - rail.top + surface.scrollTop - 24)
+        setPositions((current) => ({ ...current, [id]: { x, y } })); onOrder([...order.filter((value) => value !== id), id])
+      }
     }
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
   }
   if (!order.length) return <div className="rail-empty"><div><UiIcon name="preview" /></div><b>SELECT FILES TO PREVIEW</b><p>Choose one or many file records. Drag a preview card into the workspace to move it.</p></div>
-  return <div className="preview-grid">{order.map((id) => <article className="preview-widget" data-preview-id={id} key={id} onPointerDown={(event) => startInteractiveMove(event, id)}><header><span className="preview-file-icon">{previews[id] ? <FileIcon item={previews[id].item} /> : <UiIcon name="file" />}</span><strong>{previews[id]?.item.name ?? 'Loading…'}</strong><button title="Move into workspace" onClick={() => { onFloat(id); onRemove(id) }}><UiIcon name="detach" /></button><button title="Close preview" onClick={() => onRemove(id)}>×</button></header><PreviewContent preview={previews[id]} compact /></article>)}</div>
+  const surfaceHeight = Math.max(620, ...order.map((id) => positionFor(id).y + 304))
+  return <div className="preview-grid" ref={surfaceRef} style={{ '--preview-surface-height': `${surfaceHeight}px` } as React.CSSProperties}>{order.map((id) => { const position = positionFor(id); return <article className="preview-widget" data-preview-id={id} key={id} style={{ left: position.x, top: position.y }} onPointerDown={(event) => startInteractiveMove(event, id)}><header><span className="preview-file-icon">{previews[id] ? <FileIcon item={previews[id].item} /> : <UiIcon name="file" />}</span><strong>{previews[id]?.item.name ?? 'Loading…'}</strong><button title="Move into workspace" onClick={() => { onFloat(id); onRemove(id) }}><UiIcon name="detach" /></button><button title="Close preview" onClick={() => onRemove(id)}>×</button></header><PreviewContent preview={previews[id]} compact /></article> })}<div className="preview-surface-end" /></div>
 }
 
 function PreviewContent({ preview, compact = false }: { preview?: FilePreview; compact?: boolean }): React.JSX.Element {
@@ -262,10 +274,11 @@ function AgentPanel({ selectedIds, settings, onSettings }: { selectedIds: string
   return <div className="agent-panel"><div className="agent-status"><div><i className={status?.available ? 'online' : ''} /><span>{status?.message ?? 'Checking local runtime…'}</span></div><button onClick={onSettings}>CONFIGURE</button></div><div className="agent-intro"><b>FILE AGENT</b><p>Answers from your local vault using <strong>{settings.agentModel}</strong>. File data is sent only to Ollama at 127.0.0.1.</p><span>{selectedIds.length ? `${selectedIds.length} selected files prioritized · all vault files available` : 'All vault files available as context'}</span></div><div className="chat-log">{messages.map((message, index) => <div key={index} className={`message ${message.role}`}><small>{message.role === 'user' ? 'YOU' : 'LOCAL AGENT'}</small><p>{message.content}</p>{message.answer && <span>{message.answer.sources.length} files supplied · {message.answer.model}</span>}</div>)}{thinking && <div className="message assistant"><small>LOCAL AGENT</small><p className="thinking">READING FILES…</p></div>}</div><div className="composer"><textarea value={question} onChange={(event) => setQuestion(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void ask() } }} placeholder="Ask anything about your files…" /><div><span>ENTER TO SEND · LOCAL ONLY</span><button disabled={!question.trim() || thinking} onClick={() => void ask()}>↑</button></div></div></div>
 }
 
-function Dock({ onAdd, onInbox, onPreview, onAgent, onRefresh, onSettings, active }: { onAdd(): void; onInbox(): void; onPreview(): void; onAgent(): void; onRefresh(): void; onSettings(): void; active: Panel }): React.JSX.Element {
+function Dock({ onAdd, onInbox, onPreview, onAgent, onZoomIn, onZoomOut, onRefresh, onSettings, active }: { onAdd(): void; onInbox(): void; onPreview(): void; onAgent(): void; onZoomIn(): void; onZoomOut(): void; onRefresh(): void; onSettings(): void; active: Panel }): React.JSX.Element {
   const actions = [
     { icon: 'add', label: 'Add files', action: onAdd }, { icon: 'inbox', label: 'Inbox', action: onInbox },
     { icon: 'preview', label: 'Previews', action: onPreview, active: active === 'preview' }, { icon: 'sparkles', label: 'Local agent', action: onAgent, active: active === 'agent' },
+    { icon: 'zoomOut', label: 'Zoom out', action: onZoomOut }, { icon: 'zoomIn', label: 'Zoom in', action: onZoomIn },
     { icon: 'refresh', label: 'Refresh', action: onRefresh }, { icon: 'settings', label: 'Appearance', action: onSettings }
   ]
   return <nav className="app-dock" aria-label="Quick actions">{actions.map((item) => <button key={item.label} className={item.active ? 'active' : ''} onClick={item.action} aria-label={item.label}><span><UiIcon name={item.icon} /></span><i>{item.label}</i></button>)}</nav>
@@ -284,6 +297,8 @@ function UiIcon({ name }: { name: string }): React.JSX.Element {
   if (name === 'sparkles') return <svg {...common}><path d="m12 3 1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3ZM18.5 14l.7 2.3 2.3.7-2.3.7-.7 2.3-.7-2.3-2.3-.7 2.3-.7.7-2.3ZM5 13l.9 2.6 2.6.9-2.6.9L5 20l-.9-2.6-2.6-.9 2.6-.9L5 13Z" /></svg>
   if (name === 'refresh') return <svg {...common}><path d="M20 7v5h-5M4 17v-5h5" /><path d="M6.1 8A7 7 0 0 1 18 6l2 2M18 16a7 7 0 0 1-11.9 2L4 16" /></svg>
   if (name === 'settings') return <svg {...common}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" /></svg>
+  if (name === 'zoomIn') return <svg {...common}><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5M10.5 7.5v6M7.5 10.5h6" /></svg>
+  if (name === 'zoomOut') return <svg {...common}><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5M7.5 10.5h6" /></svg>
   if (name === 'detach') return <svg {...common}><path d="M14 4h6v6M20 4l-9 9" /><path d="M19 13v6H5V5h6" /></svg>
   if (name === 'folder') return <svg {...common}><path d="M3 6h6l2 2h10v11H3z" /></svg>
   if (name === 'image') return <svg {...common}><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9" r="1.5" /><path d="m4 17 5-5 3.5 3.5 2-2L20 19" /></svg>
@@ -300,6 +315,23 @@ function Settings({ snapshot, onClose, onSaved }: { snapshot: VaultSnapshot; onC
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}><section className="modal"><header><div><p>CONFIGURATION</p><h2>SETTINGS</h2></div><button onClick={onClose}>×</button></header><div className="settings-scroll"><Setting label="REVIEW AGE" hint="Mark temporary files for review after this many days."><label><input type="number" min="1" max="365" value={days} onChange={(event) => setDays(Number(event.target.value))} /> DAYS</label></Setting><Setting label="APPEARANCE" hint="Switch the interface contrast mode."><div className="segmented"><button className={theme === 'dark' ? 'active' : ''} onClick={() => { setTheme('dark'); setBackground('#000000') }}>BLACK</button><button className={theme === 'light' ? 'active' : ''} onClick={() => { setTheme('light'); setBackground('#ffffff') }}>WHITE</button></div></Setting><Setting label="ACCENT COLOR" hint="Used for focus, selection and active previews."><div className="color-choices">{accents.map((color) => <button key={color} className={accent === color ? 'active' : ''} style={{ background: color }} onClick={() => setAccent(color)} aria-label={`Accent ${color}`} />)}<input type="color" value={accent} onChange={(event) => setAccent(event.target.value)} /></div></Setting><Setting label="BACKGROUND" hint="Choose the base window color."><label className="color-input"><input type="color" value={background} onChange={(event) => setBackground(event.target.value)} /><code>{background.toUpperCase()}</code></label></Setting><Setting label="SIDEBAR GLASS" hint="Adjust only the left sidebar glass opacity."><label className="range-input"><input type="range" min="45" max="90" value={Math.round(opacity * 100)} onChange={(event) => setOpacity(Number(event.target.value) / 100)} /><b>{Math.round(opacity * 100)}%</b></label></Setting><Setting label="LOCAL AI MODEL" hint="Exact Ollama model name. Recommended custom name: tempvault-agent."><input className="model-input" value={model} onChange={(event) => setModel(event.target.value)} /></Setting><Setting label="LAUNCH AT STARTUP" hint="Open TempVault when you sign in."><label className="switch"><input type="checkbox" checked={startup} onChange={(event) => setStartup(event.target.checked)} /><i /></label></Setting><div className="location-setting"><span>STORAGE LOCATION</span><code>{snapshot.settings.storageRoot}</code></div></div><footer><button onClick={onClose}>CANCEL</button><button className="solid" disabled={saving} onClick={async () => { setSaving(true); await window.tempVault.updateSettings({ staleDays: Math.max(1, Math.min(365, days)), launchAtStartup: startup, theme, agentModel: model, accentColor: accent, backgroundColor: background, windowOpacity: opacity }); await onSaved() }}>SAVE</button></footer></section></div>
 }
 function Setting({ label, hint, children }: { label: string; hint: string; children: React.ReactNode }): React.JSX.Element { return <div className="setting-row"><div><strong>{label}</strong><p>{hint}</p></div>{children}</div> }
+
+function fileTypeLabel(item: VaultItem): string {
+  if (item.category === 'Folders') return 'Folder'
+  const extension = item.extension.toLowerCase()
+  const labels: Record<string, string> = {
+    doc: 'Microsoft Word', docx: 'Microsoft Word', odt: 'OpenDocument text', pdf: 'PDF document', rtf: 'Rich text', txt: 'Plain text', md: 'Markdown',
+    xls: 'Microsoft Excel', xlsx: 'Microsoft Excel', ods: 'OpenDocument spreadsheet', csv: 'CSV spreadsheet', tsv: 'TSV spreadsheet',
+    ppt: 'Microsoft PowerPoint', pptx: 'Microsoft PowerPoint', odp: 'OpenDocument presentation',
+    zip: 'ZIP archive', rar: 'RAR archive', '7z': '7-Zip archive', tar: 'TAR archive', gz: 'GZip archive', iso: 'Disc image',
+    png: 'PNG image', jpg: 'JPEG image', jpeg: 'JPEG image', gif: 'GIF image', webp: 'WebP image', svg: 'SVG image', bmp: 'Bitmap image',
+    mp4: 'MP4 video', mkv: 'Matroska video', mov: 'QuickTime video', webm: 'WebM video',
+    mp3: 'MP3 audio', wav: 'Wave audio', flac: 'FLAC audio', m4a: 'MPEG-4 audio',
+    ts: 'TypeScript', tsx: 'TypeScript React', js: 'JavaScript', jsx: 'JavaScript React', py: 'Python', json: 'JSON', html: 'HTML', css: 'CSS', ino: 'Arduino sketch',
+    exe: 'Windows application', msi: 'Windows installer', ttf: 'TrueType font', otf: 'OpenType font'
+  }
+  return labels[extension] ?? (extension ? `${extension.toUpperCase()} file` : item.category.slice(0, -1))
+}
 
 function viewTitle(view: View): string { return ({ all: 'FILE RECORDS', temporary: 'TEMPORARY', kept: 'KEPT FILES', stale: 'NEEDS REVIEW' })[view] }
 function formatBytes(bytes: number): string { if (!bytes) return '0 B'; const units = ['B', 'KB', 'MB', 'GB', 'TB']; const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1); return `${(bytes / 1024 ** index).toFixed(index ? 1 : 0)} ${units[index]}` }
