@@ -154,7 +154,7 @@ export default function App(): React.JSX.Element {
 
       <aside className="right-rail" onDragOver={(event) => { if (event.dataTransfer.types.includes('application/x-tempvault-file')) { event.preventDefault(); event.currentTarget.classList.add('drop-ready') } }} onDragLeave={(event) => event.currentTarget.classList.remove('drop-ready')} onDrop={(event) => { event.preventDefault(); event.currentTarget.classList.remove('drop-ready'); const id = event.dataTransfer.getData('application/x-tempvault-file'); if (id) openPreview(id) }}>
         <div className="rail-tabs"><button className={panel === 'preview' ? 'active' : ''} onClick={() => setPanel('preview')}>PREVIEW <span>{previewOrder.length}</span></button><button className={panel === 'agent' ? 'active' : ''} onClick={() => setPanel('agent')}>ASK AI</button></div>
-        {panel === 'preview' ? <PreviewRail order={previewOrder} previews={previews} onFloat={createFloating} onMove={(id, x, y) => { createFloating(id, x, y); setPreviewOrder((current) => current.filter((value) => value !== id)) }} onRemove={(id) => setPreviewOrder((current) => current.filter((value) => value !== id))} /> : <AgentPanel selectedIds={[...selected]} settings={snapshot.settings} onSettings={() => setSettingsOpen(true)} />}
+        {panel === 'preview' ? <PreviewRail order={previewOrder} previews={previews} onReorder={setPreviewOrder} onFloat={createFloating} onMove={(id, x, y) => { createFloating(id, x, y); setPreviewOrder((current) => current.filter((value) => value !== id)) }} onRemove={(id) => setPreviewOrder((current) => current.filter((value) => value !== id))} /> : <AgentPanel selectedIds={[...selected]} settings={snapshot.settings} onSettings={() => setSettingsOpen(true)} />}
       </aside>
       <Dock onAdd={() => void perform('Added', () => window.tempVault.addFiles())} onInbox={() => void window.tempVault.openInbox()} onPreview={() => setPanel('preview')} onAgent={() => setPanel('agent')} onZoomIn={() => void changeZoom('in')} onZoomOut={() => void changeZoom('out')} onRefresh={() => void refresh()} onSettings={() => setSettingsOpen(true)} active={panel} />
       {contextMenu && <ContextMenu item={snapshot.items.find((item) => item.id === contextMenu.id)} x={contextMenu.x} y={contextMenu.y} onClose={() => setContextMenu(null)} onPreview={() => openPreview(contextMenu.id)} onFloat={() => { openPreview(contextMenu.id); createFloating(contextMenu.id) }} onPerform={perform} />}
@@ -197,48 +197,85 @@ function ContextMenu({ item, x, y, onClose, onPreview, onFloat, onPerform }: { i
   return <div className="context-menu" style={{ left, top }} onPointerDown={(event) => event.stopPropagation()}><header><i><FileIcon item={item} /></i><div><strong>{item.name}</strong><span>{fileTypeLabel(item)} · {formatBytes(item.size)}</span></div></header><button onClick={() => action(onPreview)}><span>Open in preview rail</span><kbd>↵</kbd></button><button onClick={() => action(onFloat)}><span>Open floating preview</span><kbd>↗</kbd></button><hr /><button onClick={() => action(() => void window.tempVault.openItem(item.id))}><span>Open with default app</span><kbd>↥</kbd></button><button onClick={() => action(() => void window.tempVault.revealItem(item.id))}><span>Show in File Explorer</span><kbd>⌕</kbd></button><hr /><button onClick={() => action(() => void onPerform(item.status === 'kept' ? 'Temporary' : 'Kept', () => item.status === 'kept' ? window.tempVault.restore([item.id]) : window.tempVault.keep([item.id])))}><span>{item.status === 'kept' ? 'Make temporary' : 'Keep this file'}</span><kbd>★</kbd></button><button onClick={() => action(() => void onPerform('Moved', () => window.tempVault.moveOut([item.id])))}><span>Remove from TempVault…</span><kbd>→</kbd></button><button className="danger" onClick={() => action(() => { if (window.confirm(`Send ${item.name} to the Recycle Bin?`)) void onPerform('Recycled', () => window.tempVault.trash([item.id])) })}><span>Move to Recycle Bin</span><kbd>⌫</kbd></button></div>
 }
 
-function PreviewRail({ order, previews, onFloat, onMove, onRemove }: { order: string[]; previews: Record<string, FilePreview>; onFloat(id: string): void; onMove(id: string, x: number, y: number): void; onRemove(id: string): void }): React.JSX.Element {
-  const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({})
+type PreviewWidgetSize = 'sm' | 'wide'
+
+function PreviewRail({ order, previews, onReorder, onFloat, onMove, onRemove }: { order: string[]; previews: Record<string, FilePreview>; onReorder(order: string[]): void; onFloat(id: string): void; onMove(id: string, x: number, y: number): void; onRemove(id: string): void }): React.JSX.Element {
+  const [sizes, setSizes] = useState<Record<string, PreviewWidgetSize>>({})
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [targetId, setTargetId] = useState<string | null>(null)
   const surfaceRef = useRef<HTMLDivElement>(null)
-  const cardHeight = 292; const fieldGap = 24
-  function positionFor(id: string): { x: number; y: number } { const index = order.indexOf(id); return positions[id] ?? { x: 12, y: 12 + Math.max(0, index) * 316 } }
-  function settlePositions(movedId: string, desired: { x: number; y: number }): Record<string, { x: number; y: number }> {
-    const entries = order.map((id) => ({ id, ...(id === movedId ? desired : positionFor(id)) })).sort((a, b) => a.y - b.y)
-    let cursor = 12; const settled: Record<string, { x: number; y: number }> = {}
-    for (const entry of entries) { const y = Math.max(entry.y, cursor); settled[entry.id] = { x: entry.x, y }; cursor = y + cardHeight + fieldGap }
-    return settled
+  const orderRef = useRef(order)
+  useEffect(() => { orderRef.current = order }, [order])
+
+  function sizeFor(id: string): PreviewWidgetSize {
+    const preview = previews[id]
+    return sizes[id] ?? (preview?.kind === 'image' || preview?.kind === 'audio' ? 'sm' : 'wide')
   }
-  function startInteractiveMove(event: React.PointerEvent<HTMLElement>, id: string): void {
-    if ((event.target as HTMLElement).closest('button')) return
-    event.preventDefault()
-    const card = event.currentTarget
-    const bounds = card.getBoundingClientRect()
-    const startX = event.clientX; const startY = event.clientY
-    let active = false
+
+  function animateLayout(previous: Map<string, DOMRect>): void {
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      surfaceRef.current?.querySelectorAll<HTMLElement>('.preview-grid-slot').forEach((slot) => {
+        const before = previous.get(slot.dataset.previewId ?? '')
+        if (!before) return
+        const after = slot.getBoundingClientRect(); const x = before.left - after.left; const y = before.top - after.top
+        if (Math.abs(x) > 1 || Math.abs(y) > 1) slot.animate([{ transform: `translate(${x}px, ${y}px)` }, { transform: 'translate(0, 0)' }], { duration: 260, easing: 'cubic-bezier(.2,.8,.2,1)' })
+      })
+    }))
+  }
+
+  function reorder(movedId: string, overId: string): void {
+    const current = orderRef.current; const from = current.indexOf(movedId); const to = current.indexOf(overId)
+    if (from < 0 || to < 0 || from === to) return
+    const previous = new Map<string, DOMRect>()
+    surfaceRef.current?.querySelectorAll<HTMLElement>('.preview-grid-slot').forEach((slot) => previous.set(slot.dataset.previewId ?? '', slot.getBoundingClientRect()))
+    const next = [...current]; next.splice(from, 1); next.splice(to, 0, movedId); orderRef.current = next; onReorder(next); animateLayout(previous)
+  }
+
+  function moveWithKeyboard(event: React.KeyboardEvent, id: string): void {
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowLeft' && event.key !== 'ArrowDown' && event.key !== 'ArrowRight') return
+    event.preventDefault(); const index = orderRef.current.indexOf(id); const delta = event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? -1 : 1
+    const target = orderRef.current[Math.max(0, Math.min(orderRef.current.length - 1, index + delta))]
+    if (target) reorder(id, target)
+  }
+
+  function startInteractiveMove(event: React.PointerEvent<HTMLButtonElement>, id: string): void {
+    event.preventDefault(); event.stopPropagation()
+    const card = event.currentTarget.closest<HTMLElement>('.preview-widget'); if (!card) return
+    const bounds = card.getBoundingClientRect(); const startX = event.clientX; const startY = event.clientY
+    let active = false; let lastTarget = id
     const move = (next: PointerEvent): void => {
       const dx = next.clientX - startX; const dy = next.clientY - startY
       if (!active && Math.hypot(dx, dy) < 4) return
-      active = true; card.classList.add('interactive-moving'); surfaceRef.current?.classList.add('force-active')
-      card.style.position = 'fixed'; card.style.left = `${bounds.left + dx}px`; card.style.top = `${bounds.top + dy}px`; card.style.width = `${bounds.width}px`; card.style.height = `${bounds.height}px`
+      if (!active) {
+        active = true; setDraggingId(id); card.classList.add('drag-lifted'); document.body.classList.add('preview-is-dragging')
+        Object.assign(card.style, { position: 'fixed', left: `${bounds.left}px`, top: `${bounds.top}px`, width: `${bounds.width}px`, height: `${bounds.height}px` })
+      }
+      card.style.left = `${bounds.left + dx}px`; card.style.top = `${bounds.top + dy}px`
+      const surface = surfaceRef.current; const rail = surface?.getBoundingClientRect()
+      if (!surface || !rail || next.clientX < rail.left || next.clientX > rail.right || next.clientY < rail.top || next.clientY > rail.bottom) { setTargetId(null); return }
+      const slots = [...surface.querySelectorAll<HTMLElement>('.preview-grid-slot')].filter((slot) => slot.dataset.previewId !== id)
+      const direct = slots.find((slot) => { const rect = slot.getBoundingClientRect(); return next.clientX >= rect.left && next.clientX <= rect.right && next.clientY >= rect.top && next.clientY <= rect.bottom })
+      const target = direct ?? slots.reduce<HTMLElement | null>((best, slot) => {
+        if (!best) return slot
+        const a = best.getBoundingClientRect(); const b = slot.getBoundingClientRect()
+        return Math.hypot(next.clientX - (b.left + b.width / 2), next.clientY - (b.top + b.height / 2)) < Math.hypot(next.clientX - (a.left + a.width / 2), next.clientY - (a.top + a.height / 2)) ? slot : best
+      }, null)
+      const overId = target?.dataset.previewId ?? null; setTargetId(overId)
+      if (overId && overId !== lastTarget) { lastTarget = overId; reorder(id, overId) }
     }
     const up = (next: PointerEvent): void => {
-      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up)
-      card.classList.remove('interactive-moving'); surfaceRef.current?.classList.remove('force-active'); card.style.removeProperty('position'); card.style.removeProperty('left'); card.style.removeProperty('top'); card.style.removeProperty('width'); card.style.removeProperty('height')
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancel)
+      card.classList.remove('drag-lifted'); document.body.classList.remove('preview-is-dragging'); ['position', 'left', 'top', 'width', 'height'].forEach((name) => card.style.removeProperty(name)); setDraggingId(null); setTargetId(null)
       if (!active) return
       const workspace = document.querySelector('.workspace')?.getBoundingClientRect()
-      if (workspace && next.clientX >= workspace.left && next.clientX <= workspace.right && next.clientY >= workspace.top && next.clientY <= workspace.bottom) { onMove(id, next.clientX, next.clientY); return }
-      const surface = surfaceRef.current; const rail = surface?.getBoundingClientRect()
-      if (surface && rail && next.clientX >= rail.left && next.clientX <= rail.right && next.clientY >= rail.top && next.clientY <= rail.bottom) {
-        const x = Math.max(12, Math.min(surface.clientWidth - bounds.width - 12, next.clientX - rail.left + surface.scrollLeft - bounds.width / 2))
-        const y = Math.max(12, next.clientY - rail.top + surface.scrollTop - 24)
-        setPositions(settlePositions(id, { x, y }))
-      }
+      if (workspace && next.clientX >= workspace.left && next.clientX <= workspace.right && next.clientY >= workspace.top && next.clientY <= workspace.bottom) onMove(id, next.clientX, next.clientY)
     }
-    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
+    const cancel = (): void => up(new PointerEvent('pointercancel', { clientX: startX, clientY: startY }))
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', cancel)
   }
+
   if (!order.length) return <div className="rail-empty"><div><UiIcon name="preview" /></div><b>SELECT FILES TO PREVIEW</b><p>Choose one or many file records. Drag a preview card into the workspace to move it.</p></div>
-  const surfaceHeight = Math.max(640, ...order.map((id) => positionFor(id).y + cardHeight + fieldGap))
-  return <div className="preview-grid" ref={surfaceRef} style={{ '--preview-surface-height': `${surfaceHeight}px` } as React.CSSProperties}>{order.map((id) => { const position = positionFor(id); return <article className="preview-widget" data-preview-id={id} key={id} style={{ left: position.x, top: position.y }} onPointerDown={(event) => startInteractiveMove(event, id)}><header><span className="preview-file-icon">{previews[id] ? <FileIcon item={previews[id].item} /> : <UiIcon name="file" />}</span><strong>{previews[id]?.item.name ?? 'Loading…'}</strong><button title="Move into workspace" onClick={() => { onFloat(id); onRemove(id) }}><UiIcon name="detach" /></button><button title="Close preview" onClick={() => onRemove(id)}>×</button></header><PreviewContent preview={previews[id]} compact /></article> })}<div className="preview-surface-end" /></div>
+  return <section className="preview-grid-shell"><div className="preview-grid-guide"><span><UiIcon name="grip" /> DRAG TO REARRANGE</span><small>{order.length} WIDGET{order.length === 1 ? '' : 'S'}</small></div><div className="preview-grid" ref={surfaceRef}>{order.map((id, index) => { const size = sizeFor(id); return <div className={`preview-grid-slot ${draggingId === id ? 'drag-origin' : ''} ${targetId === id ? 'drop-target' : ''}`} data-preview-id={id} data-size={size} key={id}><article className={`preview-widget ${draggingId === id ? 'drag-lifted' : ''}`} data-preview-id={id}><header><button className="widget-grip" title="Drag to rearrange" aria-label={`Rearrange ${previews[id]?.item.name ?? 'preview'}, item ${index + 1} of ${order.length}`} onPointerDown={(event) => startInteractiveMove(event, id)} onKeyDown={(event) => moveWithKeyboard(event, id)}><UiIcon name="grip" /></button><span className="preview-file-icon">{previews[id] ? <FileIcon item={previews[id].item} /> : <UiIcon name="file" />}</span><strong>{previews[id]?.item.name ?? 'Loading…'}</strong><button title={size === 'wide' ? 'Make compact' : 'Make wide'} onClick={() => setSizes((current) => ({ ...current, [id]: size === 'wide' ? 'sm' : 'wide' }))}><UiIcon name={size === 'wide' ? 'compact' : 'wide'} /></button><button title="Move into workspace" onClick={() => { onFloat(id); onRemove(id) }}><UiIcon name="detach" /></button><button title="Close preview" onClick={() => onRemove(id)}>×</button></header><PreviewContent preview={previews[id]} compact /></article></div> })}</div></section>
 }
 
 function PreviewContent({ preview, compact = false }: { preview?: FilePreview; compact?: boolean }): React.JSX.Element {
@@ -323,6 +360,9 @@ function UiIcon({ name }: { name: string }): React.JSX.Element {
   if (name === 'settings') return <svg {...common}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" /></svg>
   if (name === 'zoomIn') return <svg {...common}><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5M10.5 7.5v6M7.5 10.5h6" /></svg>
   if (name === 'zoomOut') return <svg {...common}><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5M7.5 10.5h6" /></svg>
+  if (name === 'grip') return <svg {...common}><circle cx="8" cy="7" r="1" fill="currentColor" stroke="none" /><circle cx="16" cy="7" r="1" fill="currentColor" stroke="none" /><circle cx="8" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="16" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="8" cy="17" r="1" fill="currentColor" stroke="none" /><circle cx="16" cy="17" r="1" fill="currentColor" stroke="none" /></svg>
+  if (name === 'wide') return <svg {...common}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M8 12h8M14 9l3 3-3 3M10 9l-3 3 3 3" /></svg>
+  if (name === 'compact') return <svg {...common}><rect x="5" y="4" width="14" height="16" rx="2" /><path d="M9 12h6M11 9l-3 3 3 3M13 9l3 3-3 3" /></svg>
   if (name === 'detach') return <svg {...common}><path d="M14 4h6v6M20 4l-9 9" /><path d="M19 13v6H5V5h6" /></svg>
   if (name === 'folder') return <svg {...common}><path d="M3 6h6l2 2h10v11H3z" /></svg>
   if (name === 'image') return <svg {...common}><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9" r="1.5" /><path d="m4 17 5-5 3.5 3.5 2-2L20 19" /></svg>

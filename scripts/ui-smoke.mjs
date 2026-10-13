@@ -66,22 +66,30 @@ const result = await evaluate(`(async () => {
     const widgets = document.querySelectorAll('.preview-widget')
     if (widgets.length !== 2) throw new Error('Multi-file previews did not render')
     if ([...widgets].some((widget) => !widget.querySelector('.preview-file-icon svg'))) throw new Error('Preview file icons did not render')
-    if ([...widgets].some((widget) => widget.getBoundingClientRect().height < 290)) throw new Error('Preview cards are too small')
+    if ([...widgets].some((widget) => widget.getBoundingClientRect().height < 220)) throw new Error('Preview cards are too small')
+    const grid = document.querySelector('.preview-grid')
+    const slots = [...grid.querySelectorAll('.preview-grid-slot')]
+    if (getComputedStyle(grid).display !== 'grid' || slots.length !== widgets.length || slots.some((slot) => !slot.dataset.size)) throw new Error('Responsive widget grid did not render')
+    if ([...widgets].some((widget) => !widget.querySelector('.widget-grip'))) throw new Error('Widget drag handles are missing')
     const arrangedCard = widgets[1]
     const arrangedId = arrangedCard.dataset.previewId
-    const arrangedBefore = Number.parseFloat(arrangedCard.style.top)
+    const targetBounds = widgets[0].getBoundingClientRect()
     const arrangedBounds = arrangedCard.getBoundingClientRect()
-    const railBounds = document.querySelector('.preview-grid').getBoundingClientRect()
-    const arrangedTargetY = Math.min(railBounds.bottom - 45, arrangedBounds.top + 110)
-    arrangedCard.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 2, buttons: 1, clientX: arrangedBounds.left + 30, clientY: arrangedBounds.top + 20 }))
-    window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 2, buttons: 1, clientX: arrangedBounds.left + 30, clientY: arrangedTargetY }))
-    if (!document.querySelector('.preview-grid').classList.contains('force-active') || getComputedStyle(arrangedCard, '::after').display !== 'none') throw new Error('Force field did not replace the drag overlay')
-    window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 2, clientX: arrangedBounds.left + 30, clientY: arrangedTargetY }))
-    await pause(100)
-    const arrangedAfter = document.querySelector('[data-preview-id="' + arrangedId + '"]')
-    if (!arrangedAfter || Number.parseFloat(arrangedAfter.style.top) <= arrangedBefore) throw new Error('Preview card vanished or did not retain its lower position')
-    const settledCards = [...document.querySelectorAll('.preview-widget')].map((widget) => widget.getBoundingClientRect()).sort((a, b) => a.top - b.top)
-    if (settledCards.some((bounds, index) => index > 0 && bounds.top < settledCards[index - 1].bottom + 20)) throw new Error('Preview force field allowed cards to overlap')
+    const grip = arrangedCard.querySelector('.widget-grip')
+    grip.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 2, buttons: 1, clientX: arrangedBounds.left + 12, clientY: arrangedBounds.top + 18 }))
+    window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 2, buttons: 1, clientX: targetBounds.left + targetBounds.width / 2, clientY: targetBounds.top + targetBounds.height / 2 }))
+    await pause(50)
+    if (!arrangedCard.classList.contains('drag-lifted') || !document.querySelector('.preview-grid-slot.drag-origin')) throw new Error('Lifted widget drag state did not render')
+    window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 2, clientX: targetBounds.left + targetBounds.width / 2, clientY: targetBounds.top + targetBounds.height / 2 }))
+    await pause(350)
+    const reordered = [...document.querySelectorAll('.preview-grid-slot')]
+    if (reordered[0]?.dataset.previewId !== arrangedId) throw new Error('Preview widgets did not reorder')
+    const settledCards = reordered.map((slot) => slot.getBoundingClientRect())
+    for (let a = 0; a < settledCards.length; a += 1) for (let b = a + 1; b < settledCards.length; b += 1) {
+      const x = Math.min(settledCards[a].right, settledCards[b].right) - Math.max(settledCards[a].left, settledCards[b].left)
+      const y = Math.min(settledCards[a].bottom, settledCards[b].bottom) - Math.max(settledCards[a].top, settledCards[b].top)
+      if (x > 1 && y > 1) throw new Error('Preview widget grid allowed cards to overlap')
+    }
     const docxWidget = [...widgets].find((widget) => widget.querySelector('header strong')?.textContent?.toLowerCase().endsWith('.docx'))
     if (docxWidget) {
       const wordText = docxWidget.querySelector('.text-preview')?.textContent?.trim() || ''
@@ -89,11 +97,12 @@ const result = await evaluate(`(async () => {
       wordPreview = 'passed (' + wordText.length + ' characters)'
     }
     const floatingBefore = document.querySelectorAll('.floating-preview').length
-    const sourceBounds = widgets[0].getBoundingClientRect()
-    const targetBounds = document.querySelector('.workspace').getBoundingClientRect()
-    widgets[0].dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1, buttons: 1, clientX: sourceBounds.left + 20, clientY: sourceBounds.top + 20 }))
-    window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1, buttons: 1, clientX: targetBounds.left + 180, clientY: targetBounds.top + 180 }))
-    window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1, clientX: targetBounds.left + 180, clientY: targetBounds.top + 180 }))
+    const sourceCard = document.querySelector('.preview-widget')
+    const sourceBounds = sourceCard.getBoundingClientRect()
+    const workspaceTarget = document.querySelector('.workspace').getBoundingClientRect()
+    sourceCard.querySelector('.widget-grip').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1, buttons: 1, clientX: sourceBounds.left + 12, clientY: sourceBounds.top + 18 }))
+    window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1, buttons: 1, clientX: workspaceTarget.left + 180, clientY: workspaceTarget.top + 180 }))
+    window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1, clientX: workspaceTarget.left + 180, clientY: workspaceTarget.top + 180 }))
     await pause(100)
     if (document.querySelectorAll('.floating-preview').length !== floatingBefore + 1) throw new Error('Pointer-moved preview did not render')
     if (document.querySelectorAll('.preview-widget').length !== widgets.length - 1) throw new Error('Pointer-moved preview copied instead of moving')
