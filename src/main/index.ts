@@ -18,6 +18,7 @@ function createWindow(): void {
     height: 820,
     minWidth: 980,
     minHeight: 640,
+    icon: join(__dirname, '../../build/icon.ico'),
     show: false,
     backgroundColor: '#00000000',
     transparent: true,
