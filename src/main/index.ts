@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { join } from 'node:path'
+import { appendFileSync, existsSync, mkdirSync } from 'node:fs'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import chokidar, { type FSWatcher } from 'chokidar'
 import { VaultService } from './vault'
@@ -11,6 +12,33 @@ const service = new VaultService()
 let mainWindow: BrowserWindow | null = null
 let watcher: FSWatcher | null = null
 let sortTimer: NodeJS.Timeout | null = null
+let revealTimer: NodeJS.Timeout | null = null
+
+function logStartup(message: string, error?: unknown): void {
+  try {
+    const directory = app.getPath('userData')
+    mkdirSync(directory, { recursive: true })
+    const detail = error instanceof Error ? `${error.stack ?? error.message}` : error === undefined ? '' : String(error)
+    appendFileSync(join(directory, 'tempvault.log'), `[${new Date().toISOString()}] ${message}${detail ? `\n${detail}` : ''}\n`, 'utf8')
+  } catch {
+    // Logging must never prevent startup.
+  }
+}
+
+function revealMainWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  if (!mainWindow.isVisible()) mainWindow.show()
+  mainWindow.moveTop()
+  mainWindow.focus()
+}
+
+function reportStartupFailure(error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error)
+  logStartup('Fatal startup error', error)
+  dialog.showErrorBox('TempVault could not start', `${message}\n\nDiagnostic log: ${join(app.getPath('userData'), 'tempvault.log')}`)
+  app.exit(1)
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -32,8 +60,11 @@ function createWindow(): void {
     }
   })
 
-  mainWindow.on('ready-to-show', () => mainWindow?.show())
-  mainWindow.on('closed', () => { mainWindow = null })
+  mainWindow.once('ready-to-show', revealMainWindow)
+  mainWindow.webContents.once('did-finish-load', revealMainWindow)
+  mainWindow.webContents.on('render-process-gone', (_event, details) => logStartup(`Renderer exited: ${details.reason} (${details.exitCode})`))
+  revealTimer = setTimeout(() => { logStartup('Using startup reveal fallback'); revealMainWindow() }, 2_500)
+  mainWindow.on('closed', () => { if (revealTimer) clearTimeout(revealTimer); revealTimer = null; mainWindow = null })
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://')) void shell.openExternal(url)
     return { action: 'deny' }
@@ -149,18 +180,17 @@ async function finish(operation: Promise<OperationResult>): Promise<OperationRes
 function emptyResult(): OperationResult { return { succeeded: [], failed: [] } }
 
 const hasLock = app.requestSingleInstanceLock()
-if (!hasLock) app.quit()
+if (!hasLock) app.exit(0)
 else {
   app.on('second-instance', (_event, argv) => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.focus()
-    }
-    const paths = argv.filter((arg) => !arg.startsWith('-') && arg !== process.execPath)
+    logStartup('Second launch requested; revealing the existing window')
+    revealMainWindow()
+    const paths = argv.slice(1).filter((arg) => !arg.startsWith('-') && existsSync(arg))
     if (paths.length) void finish(service.ingest(paths))
   })
 
   app.whenReady().then(async () => {
+    logStartup(`Starting TempVault ${app.getVersion()} from ${process.execPath}`)
     electronApp.setAppUserModelId('com.tempvault.app')
     app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
     await service.initialize()
@@ -169,7 +199,7 @@ else {
     createWindow()
     await startWatcher()
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
-  })
+  }).catch(reportStartupFailure)
 }
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
