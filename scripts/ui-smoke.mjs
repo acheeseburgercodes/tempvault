@@ -47,6 +47,21 @@ const result = await evaluate(`(async () => {
   const leftOutline = getComputedStyle(document.querySelector('.sidebar'), '::after')
   const rightOutline = getComputedStyle(document.querySelector('.right-rail'), '::after')
   if (leftOutline.borderTopColor !== rightOutline.borderTopColor || leftOutline.borderTopWidth !== rightOutline.borderTopWidth || leftOutline.borderRadius !== rightOutline.borderRadius) throw new Error('Side panel outlines do not match')
+  const rail = document.querySelector('.right-rail')
+  const railBefore = rail.getBoundingClientRect()
+  const widthHandle = rail.querySelector('.rail-resizer-width')
+  const heightHandle = rail.querySelector('.rail-resizer-height')
+  widthHandle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, buttons: 1, clientX: railBefore.left, clientY: railBefore.top + 100 }))
+  window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, buttons: 1, clientX: railBefore.left - 28, clientY: railBefore.top + 100 }))
+  window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: railBefore.left - 28, clientY: railBefore.top + 100 }))
+  await pause(80)
+  const railWider = rail.getBoundingClientRect()
+  if (railWider.width < railBefore.width + 20) throw new Error('Preview rail width resize failed')
+  heightHandle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, buttons: 1, clientX: railWider.left + 100, clientY: railWider.bottom }))
+  window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, buttons: 1, clientX: railWider.left + 100, clientY: railWider.bottom - 24 }))
+  window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: railWider.left + 100, clientY: railWider.bottom - 24 }))
+  await pause(80)
+  if (rail.getBoundingClientRect().height > railWider.height - 16) throw new Error('Preview rail height resize failed')
   const dock = document.querySelector('.app-dock')
   const dockBounds = dock.getBoundingClientRect()
   const workspaceBounds = document.querySelector('.workspace').getBoundingClientRect()
@@ -69,7 +84,7 @@ const result = await evaluate(`(async () => {
     if ([...widgets].some((widget) => widget.getBoundingClientRect().height < 220)) throw new Error('Preview cards are too small')
     const grid = document.querySelector('.preview-grid')
     const slots = [...grid.querySelectorAll('.preview-grid-slot')]
-    if (getComputedStyle(grid).display !== 'grid' || slots.length !== widgets.length || slots.some((slot) => !slot.dataset.size)) throw new Error('Responsive widget grid did not render')
+    if (getComputedStyle(grid).display !== 'grid' || getComputedStyle(grid).gridTemplateColumns.split(' ').length !== 1 || slots.length !== widgets.length) throw new Error('Vertical widget grid did not render')
     if ([...widgets].some((widget) => !widget.querySelector('.widget-grip'))) throw new Error('Widget drag handles are missing')
     if ([...widgets].some((widget) => {
       const zone = widget.querySelector('.widget-drag-zone')
@@ -85,6 +100,8 @@ const result = await evaluate(`(async () => {
     window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 2, buttons: 1, clientX: targetBounds.left + targetBounds.width / 2, clientY: targetBounds.top + targetBounds.height / 2 }))
     await pause(50)
     if (!arrangedCard.classList.contains('drag-lifted') || !document.querySelector('.preview-grid-slot.drag-origin')) throw new Error('Lifted widget drag state did not render')
+    const liftedBounds = arrangedCard.getBoundingClientRect()
+    if (Math.abs(liftedBounds.width - arrangedBounds.width) > arrangedBounds.width * .08 || Math.abs(liftedBounds.height - arrangedBounds.height) > arrangedBounds.height * .08) throw new Error('Dragged widget changed size or produced the oversized oval')
     window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 2, clientX: targetBounds.left + targetBounds.width / 2, clientY: targetBounds.top + targetBounds.height / 2 }))
     await pause(350)
     const reordered = [...document.querySelectorAll('.preview-grid-slot')]
@@ -97,9 +114,8 @@ const result = await evaluate(`(async () => {
     }
     const docxWidget = [...widgets].find((widget) => widget.querySelector('header strong')?.textContent?.toLowerCase().endsWith('.docx'))
     if (docxWidget) {
-      const wordText = docxWidget.querySelector('.text-preview')?.textContent?.trim() || ''
-      if (wordText.length < 10) throw new Error('Word preview did not extract readable content')
-      wordPreview = 'passed (' + wordText.length + ' characters)'
+      if (!docxWidget.querySelector('.office-preview')) throw new Error('Word preview did not render rich document content')
+      wordPreview = 'passed (rich document iframe)'
     }
     const floatingBefore = document.querySelectorAll('.floating-preview').length
     const sourceCard = document.querySelector('.preview-widget')
@@ -129,6 +145,16 @@ const result = await evaluate(`(async () => {
   const zoomedOut = await window.tempVault.zoomOut()
   const zoomReset = await window.tempVault.zoomReset()
   if (!(zoomedIn > zoomedOut) || zoomReset !== 1) throw new Error('Zoom controls failed')
+  const vaultSnapshot = await window.tempVault.getSnapshot()
+  const previewCompatibility = {}
+  for (const extension of ['doc', 'docx', 'pdf', 'ppt', 'pptx']) {
+    const item = vaultSnapshot.items.find((candidate) => candidate.extension.toLowerCase() === extension)
+    if (!item) { previewCompatibility[extension] = 'no fixture'; continue }
+    const preview = await window.tempVault.getPreview(item.id)
+    if (extension === 'pdf' && preview.kind !== 'pdf') throw new Error('PDF preview compatibility failed')
+    if (['doc', 'docx', 'ppt', 'pptx'].includes(extension) && !['html', 'text'].includes(preview.kind)) throw new Error(extension.toUpperCase() + ' preview compatibility failed')
+    previewCompatibility[extension] = preview.kind
+  }
   const folderNav = [...document.querySelectorAll('.nav-item')].find((item) => item.textContent.includes('Type folders'))
   if (!folderNav) throw new Error('Type folder page navigation is missing')
   folderNav.click()
@@ -152,6 +178,7 @@ const result = await evaluate(`(async () => {
     lightSelection: { activeNavBackground, bulkBackground },
     previewCheck,
     wordPreview,
+    previewCompatibility,
     floating: document.querySelectorAll('.floating-preview').length,
     theme,
     background,

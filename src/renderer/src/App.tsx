@@ -7,6 +7,8 @@ type Panel = 'preview' | 'agent'
 type FloatingWindow = { key: string; id: string; x: number; y: number; width: number; height: number; z: number }
 type ChatMessage = { role: 'user' | 'assistant'; content: string; answer?: AgentAnswer }
 type ContextState = { id: string; x: number; y: number } | null
+type RailSize = { width: number; height: number }
+type RailResizeAxis = 'width' | 'height' | 'both'
 
 const icons: Record<string, string> = { Images: 'IM', Videos: 'VI', Audio: 'AU', Documents: 'DO', Spreadsheets: 'SP', Presentations: 'PR', Archives: 'AR', Installers: 'IN', Code: 'CO', Fonts: 'FO', Folders: 'DI', Other: 'FI' }
 
@@ -28,6 +30,12 @@ export default function App(): React.JSX.Element {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<ContextState>(null)
+  const [railSize, setRailSize] = useState<RailSize>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('tempvault:preview-rail-size') ?? '') as Partial<RailSize>
+      return { width: Number(saved.width) || Math.min(390, Math.max(320, window.innerWidth * .28)), height: Number(saved.height) || window.innerHeight - 60 }
+    } catch { return { width: Math.min(390, Math.max(320, window.innerWidth * .28)), height: window.innerHeight - 60 } }
+  })
   const workspaceRef = useRef<HTMLDivElement>(null)
 
   const refresh = useCallback(async () => {
@@ -51,6 +59,11 @@ export default function App(): React.JSX.Element {
     for (const id of previewOrder) if (!previews[id]) void window.tempVault.getPreview(id).then((preview) => setPreviews((current) => ({ ...current, [id]: preview }))).catch((error) => setToast(error instanceof Error ? error.message : String(error)))
   }, [previewOrder, previews])
   useEffect(() => { const close = (): void => setContextMenu(null); window.addEventListener('pointerdown', close); window.addEventListener('blur', close); return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('blur', close) } }, [])
+  useEffect(() => { localStorage.setItem('tempvault:preview-rail-size', JSON.stringify(railSize)) }, [railSize])
+  useEffect(() => {
+    const clamp = (): void => setRailSize((current) => ({ width: Math.max(310, Math.min(current.width, window.innerWidth - 760)), height: Math.max(320, Math.min(current.height, window.innerHeight - 60)) }))
+    window.addEventListener('resize', clamp); return () => window.removeEventListener('resize', clamp)
+  }, [])
 
   const staleBoundary = Date.now() - (snapshot?.settings.staleDays ?? 7) * 86_400_000
   const effectiveCategory = hoverCategory ?? category
@@ -125,11 +138,32 @@ export default function App(): React.JSX.Element {
     setToast(`Zoom ${Math.round(factor * 100)}%`)
   }
 
+  function startRailResize(event: React.PointerEvent, axis: RailResizeAxis): void {
+    event.preventDefault(); event.stopPropagation()
+    const startX = event.clientX; const startY = event.clientY; const origin = railSize
+    document.body.classList.add('rail-is-resizing')
+    const move = (next: PointerEvent): void => setRailSize({
+      width: axis === 'height' ? origin.width : Math.max(310, Math.min(window.innerWidth - 760, origin.width - (next.clientX - startX))),
+      height: axis === 'width' ? origin.height : Math.max(320, Math.min(window.innerHeight - 60, origin.height + (next.clientY - startY)))
+    })
+    const up = (): void => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); document.body.classList.remove('rail-is-resizing') }
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
+  }
+
+  function resizeRailWithKeyboard(event: React.KeyboardEvent, axis: RailResizeAxis): void {
+    const amount = event.shiftKey ? 40 : 12
+    const horizontal = event.key === 'ArrowLeft' ? amount : event.key === 'ArrowRight' ? -amount : 0
+    const vertical = event.key === 'ArrowUp' ? -amount : event.key === 'ArrowDown' ? amount : 0
+    if ((!horizontal || axis === 'height') && (!vertical || axis === 'width')) return
+    event.preventDefault()
+    setRailSize((current) => ({ width: Math.max(310, Math.min(window.innerWidth - 760, current.width + horizontal)), height: Math.max(320, Math.min(window.innerHeight - 60, current.height + vertical)) }))
+  }
+
   if (!snapshot) return <div className="loading"><div className="vault-mark">TV</div><span>OPENING VAULT</span></div>
   const selectedItems = snapshot.items.filter((item) => selected.has(item.id))
 
   return (
-    <div className="app-shell" onDragOver={(event) => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDraggingFiles(true) } }} onDragLeave={(event) => { if (event.currentTarget === event.target) setDraggingFiles(false) }} onDrop={(event) => { if (event.dataTransfer.files.length) void handleFileDrop(event) }}>
+    <div className="app-shell" style={{ '--rail-width': `${railSize.width}px`, '--rail-height': `${railSize.height}px` } as React.CSSProperties} onDragOver={(event) => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDraggingFiles(true) } }} onDragLeave={(event) => { if (event.currentTarget === event.target) setDraggingFiles(false) }} onDrop={(event) => { if (event.dataTransfer.files.length) void handleFileDrop(event) }}>
       <header className="titlebar"><div className="brand"><span className="vault-mark small">TV</span><span>TEMPVAULT</span><em>LOCAL ONLY</em></div><div className="title-actions"><button title="Ask the local agent" onClick={() => setPanel('agent')}>AI</button><button title="Toggle light mode" onClick={() => { const theme = snapshot.settings.theme === 'dark' ? 'light' : 'dark'; void window.tempVault.updateSettings({ theme, backgroundColor: theme === 'light' ? '#ffffff' : '#000000' }).then(refresh) }}>{snapshot.settings.theme === 'dark' ? '☼' : '◐'}</button></div></header>
       <aside className="sidebar">
         <div className="nav-section"><span>LIBRARY</span><Nav active={view === 'all'} label="All files" count={snapshot.items.length} glyph="01" onClick={() => setView('all')} /><Nav active={view === 'temporary'} label="Temporary" count={snapshot.totals.temporary} glyph="02" onClick={() => setView('temporary')} /><Nav active={view === 'kept'} label="Kept" count={snapshot.totals.kept} glyph="03" onClick={() => setView('kept')} /><Nav active={view === 'stale'} label="Review" count={snapshot.totals.stale} glyph="04" onClick={() => setView('stale')} /><Nav active={view === 'folders'} label="Type folders" count={buildFolderGroups(snapshot.items).length} glyph="05" onClick={() => setView('folders')} /></div>
@@ -155,6 +189,9 @@ export default function App(): React.JSX.Element {
       </main>
 
       <aside className="right-rail" onDragOver={(event) => { if (event.dataTransfer.types.includes('application/x-tempvault-file')) { event.preventDefault(); event.currentTarget.classList.add('drop-ready') } }} onDragLeave={(event) => event.currentTarget.classList.remove('drop-ready')} onDrop={(event) => { event.preventDefault(); event.currentTarget.classList.remove('drop-ready'); const id = event.dataTransfer.getData('application/x-tempvault-file'); if (id) openPreview(id) }}>
+        <div className="rail-resizer rail-resizer-width" role="separator" aria-label="Resize preview panel width" aria-orientation="vertical" tabIndex={0} onPointerDown={(event) => startRailResize(event, 'width')} onKeyDown={(event) => resizeRailWithKeyboard(event, 'width')} />
+        <div className="rail-resizer rail-resizer-height" role="separator" aria-label="Resize preview panel height" aria-orientation="horizontal" tabIndex={0} onPointerDown={(event) => startRailResize(event, 'height')} onKeyDown={(event) => resizeRailWithKeyboard(event, 'height')} />
+        <div className="rail-resizer rail-resizer-corner" role="separator" aria-label="Resize preview panel" tabIndex={0} onPointerDown={(event) => startRailResize(event, 'both')} onKeyDown={(event) => resizeRailWithKeyboard(event, 'both')} />
         <div className="rail-tabs"><button className={panel === 'preview' ? 'active' : ''} onClick={() => setPanel('preview')}>PREVIEW <span>{previewOrder.length}</span></button><button className={panel === 'agent' ? 'active' : ''} onClick={() => setPanel('agent')}>ASK AI</button></div>
         {panel === 'preview' ? <PreviewRail order={previewOrder} previews={previews} onReorder={setPreviewOrder} onFloat={createFloating} onMove={(id, x, y) => { createFloating(id, x, y); setPreviewOrder((current) => current.filter((value) => value !== id)) }} onRemove={(id) => setPreviewOrder((current) => current.filter((value) => value !== id))} /> : <AgentPanel selectedIds={[...selected]} settings={snapshot.settings} onSettings={() => setSettingsOpen(true)} />}
       </aside>
@@ -244,20 +281,12 @@ function ContextMenu({ item, x, y, onClose, onPreview, onFloat, onPerform }: { i
   return <div className="context-menu" style={{ left, top }} onPointerDown={(event) => event.stopPropagation()}><header><i><FileIcon item={item} /></i><div><strong>{item.name}</strong><span>{fileTypeLabel(item)} · {formatBytes(item.size)}</span></div></header><button onClick={() => action(onPreview)}><span>Open in preview rail</span><kbd>↵</kbd></button><button onClick={() => action(onFloat)}><span>Open floating preview</span><kbd>↗</kbd></button><hr /><button onClick={() => action(() => void window.tempVault.openItem(item.id))}><span>Open with default app</span><kbd>↥</kbd></button><button onClick={() => action(() => void window.tempVault.revealItem(item.id))}><span>Show in File Explorer</span><kbd>⌕</kbd></button><hr /><button onClick={() => action(() => void onPerform(item.status === 'kept' ? 'Temporary' : 'Kept', () => item.status === 'kept' ? window.tempVault.restore([item.id]) : window.tempVault.keep([item.id])))}><span>{item.status === 'kept' ? 'Make temporary' : 'Keep this file'}</span><kbd>★</kbd></button><button onClick={() => action(() => void onPerform('Moved', () => window.tempVault.moveOut([item.id])))}><span>Remove from TempVault…</span><kbd>→</kbd></button><button className="danger" onClick={() => action(() => { if (window.confirm(`Send ${item.name} to the Recycle Bin?`)) void onPerform('Recycled', () => window.tempVault.trash([item.id])) })}><span>Move to Recycle Bin</span><kbd>⌫</kbd></button></div>
 }
 
-type PreviewWidgetSize = 'sm' | 'wide'
-
 function PreviewRail({ order, previews, onReorder, onFloat, onMove, onRemove }: { order: string[]; previews: Record<string, FilePreview>; onReorder(order: string[]): void; onFloat(id: string): void; onMove(id: string, x: number, y: number): void; onRemove(id: string): void }): React.JSX.Element {
-  const [sizes, setSizes] = useState<Record<string, PreviewWidgetSize>>({})
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [targetId, setTargetId] = useState<string | null>(null)
   const surfaceRef = useRef<HTMLDivElement>(null)
   const orderRef = useRef(order)
   useEffect(() => { orderRef.current = order }, [order])
-
-  function sizeFor(id: string): PreviewWidgetSize {
-    const preview = previews[id]
-    return sizes[id] ?? (preview?.kind === 'image' || preview?.kind === 'audio' ? 'sm' : 'wide')
-  }
 
   function animateLayout(previous: Map<string, DOMRect>): void {
     window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
@@ -295,9 +324,10 @@ function PreviewRail({ order, previews, onReorder, onFloat, onMove, onRemove }: 
       if (!active && Math.hypot(dx, dy) < 4) return
       if (!active) {
         active = true; setDraggingId(id); card.classList.add('drag-lifted'); document.body.classList.add('preview-is-dragging')
-        Object.assign(card.style, { position: 'fixed', left: `${bounds.left}px`, top: `${bounds.top}px`, width: `${bounds.width}px`, height: `${bounds.height}px` })
+        card.style.setProperty('--drag-left', `${bounds.left}px`); card.style.setProperty('--drag-top', `${bounds.top}px`)
+        card.style.setProperty('--drag-width', `${bounds.width}px`); card.style.setProperty('--drag-height', `${bounds.height}px`)
       }
-      card.style.left = `${bounds.left + dx}px`; card.style.top = `${bounds.top + dy}px`
+      card.style.setProperty('--drag-x', `${dx}px`); card.style.setProperty('--drag-y', `${dy}px`)
       const surface = surfaceRef.current; const rail = surface?.getBoundingClientRect()
       if (!surface || !rail || next.clientX < rail.left || next.clientX > rail.right || next.clientY < rail.top || next.clientY > rail.bottom) { setTargetId(null); return }
       const edge = 54
@@ -315,7 +345,7 @@ function PreviewRail({ order, previews, onReorder, onFloat, onMove, onRemove }: 
     }
     const up = (next: PointerEvent): void => {
       window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancel)
-      card.classList.remove('drag-lifted'); document.body.classList.remove('preview-is-dragging'); ['position', 'left', 'top', 'width', 'height'].forEach((name) => card.style.removeProperty(name)); setDraggingId(null); setTargetId(null)
+      card.classList.remove('drag-lifted'); document.body.classList.remove('preview-is-dragging'); ['--drag-left', '--drag-top', '--drag-width', '--drag-height', '--drag-x', '--drag-y'].forEach((name) => card.style.removeProperty(name)); setDraggingId(null); setTargetId(null)
       if (!active) return
       const workspace = document.querySelector('.workspace')?.getBoundingClientRect()
       if (workspace && next.clientX >= workspace.left && next.clientX <= workspace.right && next.clientY >= workspace.top && next.clientY <= workspace.bottom) onMove(id, next.clientX, next.clientY)
@@ -325,7 +355,7 @@ function PreviewRail({ order, previews, onReorder, onFloat, onMove, onRemove }: 
   }
 
   if (!order.length) return <div className="rail-empty"><div><UiIcon name="preview" /></div><b>SELECT FILES TO PREVIEW</b><p>Choose one or many file records. Drag a preview card into the workspace to move it.</p></div>
-  return <section className={`preview-grid-shell ${draggingId ? 'is-rearranging' : ''}`}><div className="preview-grid-guide"><span><UiIcon name="grip" /> {draggingId ? 'REARRANGING WIDGETS' : 'DRAG WIDGETS TO REARRANGE'}</span><small>{order.length} WIDGET{order.length === 1 ? '' : 'S'}</small></div><div className="preview-grid" ref={surfaceRef}>{order.map((id, index) => { const size = sizeFor(id); const name = previews[id]?.item.name ?? 'Loading…'; return <div className={`preview-grid-slot ${draggingId === id ? 'drag-origin' : ''} ${targetId === id ? 'drop-target' : ''}`} data-preview-id={id} data-size={size} key={id}><article className={`preview-widget ${draggingId === id ? 'drag-lifted' : ''}`} data-preview-id={id}><header><button className="widget-drag-zone widget-grip" title="Drag to rearrange" aria-label={`Rearrange ${name}, item ${index + 1} of ${order.length}`} onPointerDown={(event) => startInteractiveMove(event, id)} onKeyDown={(event) => moveWithKeyboard(event, id)}><UiIcon name="grip" /><span className="preview-file-icon">{previews[id] ? <FileIcon item={previews[id].item} /> : <UiIcon name="file" />}</span><strong>{name}</strong></button><button title={size === 'wide' ? 'Make compact' : 'Make wide'} onClick={() => setSizes((current) => ({ ...current, [id]: size === 'wide' ? 'sm' : 'wide' }))}><UiIcon name={size === 'wide' ? 'compact' : 'wide'} /></button><button title="Move into workspace" onClick={() => { onFloat(id); onRemove(id) }}><UiIcon name="detach" /></button><button title="Close preview" onClick={() => onRemove(id)}>×</button></header><PreviewContent preview={previews[id]} compact /></article></div> })}</div><div className="sr-only" aria-live="polite">{draggingId ? `Rearranging ${previews[draggingId]?.item.name ?? 'preview widget'}` : ''}</div></section>
+  return <section className={`preview-grid-shell ${draggingId ? 'is-rearranging' : ''}`}><div className="preview-grid-guide"><span><UiIcon name="grip" /> {draggingId ? 'REARRANGING WIDGETS' : 'DRAG WIDGETS UP OR DOWN'}</span><small>{order.length} WIDGET{order.length === 1 ? '' : 'S'}</small></div><div className="preview-grid" ref={surfaceRef}>{order.map((id, index) => { const name = previews[id]?.item.name ?? 'Loading…'; return <div className={`preview-grid-slot ${draggingId === id ? 'drag-origin' : ''} ${targetId === id ? 'drop-target' : ''}`} data-preview-id={id} key={id}><article className={`preview-widget ${draggingId === id ? 'drag-lifted' : ''}`} data-preview-id={id}><header><button className="widget-drag-zone widget-grip" title="Drag up or down to rearrange" aria-label={`Rearrange ${name}, item ${index + 1} of ${order.length}`} onPointerDown={(event) => startInteractiveMove(event, id)} onKeyDown={(event) => moveWithKeyboard(event, id)}><UiIcon name="grip" /><span className="preview-file-icon">{previews[id] ? <FileIcon item={previews[id].item} /> : <UiIcon name="file" />}</span><strong>{name}</strong></button><button title="Move into workspace" onClick={() => { onFloat(id); onRemove(id) }}><UiIcon name="detach" /></button><button title="Close preview" onClick={() => onRemove(id)}>×</button></header><PreviewContent preview={previews[id]} compact /></article></div> })}</div><div className="sr-only" aria-live="polite">{draggingId ? `Rearranging ${previews[draggingId]?.item.name ?? 'preview widget'}` : ''}</div></section>
 }
 
 function PreviewContent({ preview, compact = false }: { preview?: FilePreview; compact?: boolean }): React.JSX.Element {
@@ -333,7 +363,8 @@ function PreviewContent({ preview, compact = false }: { preview?: FilePreview; c
   if (preview.kind === 'image') return <div className="visual-preview"><img src={preview.dataUrl} alt={preview.item.name} /></div>
   if (preview.kind === 'audio') return <div className="media-preview"><div className="file-monogram">AU</div><audio controls src={preview.dataUrl} /></div>
   if (preview.kind === 'video') return <div className="visual-preview"><video controls src={preview.dataUrl} /></div>
-  if (preview.kind === 'pdf') return compact ? <div className="media-preview"><div className="file-monogram">PDF</div><p>Detach to inspect this PDF.</p></div> : <iframe className="pdf-preview" src={preview.dataUrl} title={preview.item.name} />
+  if (preview.kind === 'pdf') return <iframe className="pdf-preview" src={preview.dataUrl} title={preview.item.name} />
+  if (preview.kind === 'html') return <iframe className="office-preview" sandbox="" srcDoc={preview.content} title={preview.item.name} />
   if (preview.kind === 'text' || preview.kind === 'folder') return <pre className="text-preview">{preview.content || 'Empty file'}{preview.truncated ? '\n\n[PREVIEW TRUNCATED]' : ''}</pre>
   return <div className="media-preview"><div className="file-monogram">{preview.item.extension?.toUpperCase() || 'FILE'}</div><p>{preview.message}</p><button onClick={() => void window.tempVault.openItem(preview.item.id)}>OPEN WITH DEFAULT APP</button></div>
 }

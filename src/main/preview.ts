@@ -2,7 +2,8 @@ import { readFile, readdir } from 'node:fs/promises'
 import { extname } from 'node:path'
 import type { FilePreview, VaultItem } from '../shared/types'
 import { VaultService } from './vault'
-import * as mammoth from 'mammoth'
+import { OfficeParser } from 'officeparser'
+import WordExtractor from 'word-extractor'
 
 const TEXT_EXTENSIONS = new Set([
   '.txt', '.md', '.csv', '.tsv', '.json', '.xml', '.yml', '.yaml', '.toml', '.ini', '.log',
@@ -19,6 +20,44 @@ const MIME_TYPES: Record<string, string> = {
 
 const MAX_TEXT_BYTES = 1_500_000
 const MAX_MEDIA_BYTES = 24_000_000
+const MAX_OFFICE_BYTES = 40_000_000
+const RICH_OFFICE_EXTENSIONS = new Set(['.docx', '.xlsx', '.pptx', '.odt', '.ods', '.odp', '.rtf'])
+const LEGACY_WORD_EXTENSIONS = new Set(['.doc'])
+
+async function officePreview(item: VaultItem, extension: string): Promise<FilePreview> {
+  if (item.size > MAX_OFFICE_BYTES) return { item, kind: 'unsupported', mimeType: 'application/octet-stream', message: 'Office preview is limited to files smaller than 40 MB.' }
+  const ast = await OfficeParser.parseOffice(item.path, { extractAttachments: true, ignoreSlideMasters: true })
+  const [{ value: html }, { value: text }] = await Promise.all([
+    ast.to('html', {
+      includeFormatting: true,
+      includeImages: true,
+      includeCharts: false,
+      htmlConfig: {
+        standalone: true,
+        containerWidth: '100%',
+        customCss: 'html,body{margin:0!important;min-width:0!important;background:#fff!important;color:#111!important;font-family:Segoe UI,Arial,sans-serif!important}body{padding:20px!important;box-sizing:border-box!important}img,svg,table{max-width:100%!important}table{border-collapse:collapse!important}td,th{border:1px solid #d6d6d6!important;padding:5px!important}.slide{margin:0 auto 18px!important;box-shadow:0 8px 26px rgba(0,0,0,.15)!important}'
+      }
+    }),
+    ast.to('text')
+  ])
+  const plainText = String(text).trim()
+  return {
+    item,
+    kind: 'html',
+    mimeType: extension === '.pptx' || extension === '.odp' ? 'application/vnd.openxmlformats-officedocument.presentationml.presentation' : extension === '.xlsx' || extension === '.ods' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    content: String(html),
+    plainText: plainText.slice(0, MAX_TEXT_BYTES),
+    truncated: plainText.length > MAX_TEXT_BYTES,
+    message: 'Rendered locally with OfficeParser.'
+  }
+}
+
+async function legacyWordPreview(item: VaultItem): Promise<FilePreview> {
+  const extractor = new WordExtractor()
+  const document = await extractor.extract(item.path)
+  const text = [document.getHeaders(), document.getBody(), document.getFootnotes(), document.getEndnotes()].filter(Boolean).join('\n\n').trim()
+  return { item, kind: 'text', mimeType: 'application/msword', content: text.slice(0, MAX_TEXT_BYTES), plainText: text.slice(0, MAX_TEXT_BYTES), truncated: text.length > MAX_TEXT_BYTES, message: 'Legacy Word document rendered as readable text.' }
+}
 
 export async function createPreview(service: VaultService, id: string): Promise<FilePreview> {
   const [item] = await service.resolveIds([id])
@@ -36,23 +75,13 @@ export async function createPreview(service: VaultService, id: string): Promise<
     }
   }
 
-  if (extension === '.docx') {
-    const result = await mammoth.extractRawText({ path: item.path })
-    const content = result.value.trim()
-    return {
-      item,
-      kind: 'text',
-      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      content: content.slice(0, MAX_TEXT_BYTES),
-      truncated: content.length > MAX_TEXT_BYTES,
-      message: result.messages.length ? `Word preview loaded with ${result.messages.length} conversion note${result.messages.length === 1 ? '' : 's'}.` : 'Word document rendered as readable text.'
-    }
-  }
+  if (RICH_OFFICE_EXTENSIONS.has(extension)) return officePreview(item, extension)
+  if (LEGACY_WORD_EXTENSIONS.has(extension)) return legacyWordPreview(item)
 
   if (TEXT_EXTENSIONS.has(extension) || (!extension && item.size < MAX_TEXT_BYTES)) {
     const buffer = await readFile(item.path)
     const slice = buffer.subarray(0, MAX_TEXT_BYTES)
-    return { item, kind: 'text', mimeType: 'text/plain', content: slice.toString('utf8'), truncated: buffer.length > slice.length }
+    return { item, kind: 'text', mimeType: 'text/plain', content: slice.toString('utf8'), plainText: slice.toString('utf8'), truncated: buffer.length > slice.length }
   }
 
   const mimeType = MIME_TYPES[extension] ?? 'application/octet-stream'
@@ -68,7 +97,7 @@ export async function contextForItem(service: VaultService, item: VaultItem, max
   const header = `FILE: ${item.name}\nTYPE: ${item.category}\nSIZE: ${item.size} bytes\nMODIFIED: ${new Date(item.modifiedAt).toISOString()}\n`
   try {
     const preview = await createPreview(service, item.id)
-    if (preview.kind === 'text' || preview.kind === 'folder') return `${header}CONTENT:\n${(preview.content ?? '').slice(0, maxCharacters)}`
+    if (preview.kind === 'text' || preview.kind === 'folder' || preview.kind === 'html') return `${header}CONTENT:\n${(preview.plainText ?? preview.content ?? '').slice(0, maxCharacters)}`
     return `${header}CONTENT: [${preview.kind} binary file; metadata available, inline text extraction unavailable]`
   } catch (error) {
     return `${header}CONTENT: [unreadable: ${error instanceof Error ? error.message : String(error)}]`

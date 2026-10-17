@@ -29,13 +29,14 @@ export interface VaultSettings {
   windowOpacity: number
 }
 
-export type PreviewKind = 'text' | 'image' | 'pdf' | 'audio' | 'video' | 'folder' | 'unsupported'
+export type PreviewKind = 'text' | 'html' | 'image' | 'pdf' | 'audio' | 'video' | 'folder' | 'unsupported'
 
 export interface FilePreview {
   item: VaultItem
   kind: PreviewKind
   mimeType: string
   content?: string
+  plainText?: string
   dataUrl?: string
   truncated?: boolean
   message?: string
