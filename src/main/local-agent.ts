@@ -1,9 +1,12 @@
 import type { AgentAnswer, AgentStatus, VaultItem } from '../shared/types'
 import { contextForItem } from './preview'
 import { VaultService } from './vault'
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+import { generateText } from 'ai'
 
 const OLLAMA_BASE = 'http://127.0.0.1:11434'
 const MAX_CONTEXT_CHARACTERS = 90_000
+const ollama = createOpenAICompatible({ name: 'ollama-local', baseURL: `${OLLAMA_BASE}/v1` })
 
 export async function getAgentStatus(service: VaultService): Promise<AgentStatus> {
   const settings = await service.getSettings()
@@ -40,31 +43,32 @@ export async function askLocalAgent(service: VaultService, question: string, foc
     sources.push(item)
     characters += context.length
   }
-  const prompt = [
+  const instructions = [
     'You are TempVault Agent, a private file analyst running entirely on the user\'s computer.',
     'Answer only from the provided vault context. Say clearly when the files do not contain the answer.',
     'Cite supporting files inline using [filename]. Do not claim to have read binary content when only metadata is provided.',
-    focusedIds.length ? 'The user has selected some files. Prioritize those files, but use the entire supplied vault context when useful.' : '',
+    focusedIds.length ? 'The user has selected some files. Prioritize those files, but use the entire supplied vault context when useful.' : ''
+  ].filter(Boolean).join(' ')
+  const prompt = [
     `QUESTION:\n${cleanQuestion}`,
     `VAULT CONTEXT (${sources.length} files):\n${contexts.join('\n\n---\n\n')}`
   ].filter(Boolean).join('\n\n')
 
-  let response: Response
   try {
-    response = await fetch(`${OLLAMA_BASE}/api/chat`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model: settings.agentModel, stream: false, messages: [{ role: 'user', content: prompt }], options: { temperature: 0.2 } }),
-      signal: AbortSignal.timeout(120_000)
+    const { text } = await generateText({
+      model: ollama(settings.agentModel),
+      instructions,
+      prompt,
+      temperature: 0.2,
+      abortSignal: AbortSignal.timeout(120_000)
     })
-  } catch {
-    throw new Error('Cannot reach Ollama. Start it with “ollama serve” and install the configured model.')
-  }
-  const body = await response.json() as { message?: { content?: string }; error?: string }
-  if (!response.ok) throw new Error(body.error || `Ollama returned ${response.status}`)
-  return {
-    answer: body.message?.content?.trim() || 'The local model returned an empty answer.',
-    sources: sources.map((item) => ({ id: item.id, name: item.name })),
-    model: settings.agentModel
+    return {
+      answer: text.trim() || 'The local model returned an empty answer.',
+      sources: sources.map((item) => ({ id: item.id, name: item.name })),
+      model: settings.agentModel
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    throw new Error(`The Vercel AI SDK could not reach the local Ollama model. Start “ollama serve” and verify “${settings.agentModel}” is installed. ${detail}`)
   }
 }
