@@ -71,6 +71,11 @@ const result = await evaluate(`(async () => {
     const slots = [...grid.querySelectorAll('.preview-grid-slot')]
     if (getComputedStyle(grid).display !== 'grid' || slots.length !== widgets.length || slots.some((slot) => !slot.dataset.size)) throw new Error('Responsive widget grid did not render')
     if ([...widgets].some((widget) => !widget.querySelector('.widget-grip'))) throw new Error('Widget drag handles are missing')
+    if ([...widgets].some((widget) => {
+      const zone = widget.querySelector('.widget-drag-zone')
+      const header = widget.querySelector('header')
+      return !zone || !zone.querySelector('.preview-file-icon') || !zone.querySelector('strong') || zone.getBoundingClientRect().width < header.getBoundingClientRect().width * 0.42
+    })) throw new Error('Widget header grab surfaces did not expand across the sidebar cards')
     const arrangedCard = widgets[1]
     const arrangedId = arrangedCard.dataset.previewId
     const targetBounds = widgets[0].getBoundingClientRect()
@@ -124,6 +129,18 @@ const result = await evaluate(`(async () => {
   const zoomedOut = await window.tempVault.zoomOut()
   const zoomReset = await window.tempVault.zoomReset()
   if (!(zoomedIn > zoomedOut) || zoomReset !== 1) throw new Error('Zoom controls failed')
+  const folderNav = [...document.querySelectorAll('.nav-item')].find((item) => item.textContent.includes('Type folders'))
+  if (!folderNav) throw new Error('Type folder page navigation is missing')
+  folderNav.click()
+  await pause(450)
+  const folderCards = [...document.querySelectorAll('.glass-folder-card')]
+  if (rows.length && !folderCards.length) throw new Error('Glass folder cards did not render')
+  if (rows.some((row) => row.querySelector('.record-name strong')?.textContent?.toLowerCase().endsWith('.pdf')) && !folderCards.some((card) => card.textContent.includes('PDFs'))) throw new Error('PDF files were not sorted into their own folder')
+  if (rows.some((row) => /\.(doc|docx|txt|md)$/i.test(row.querySelector('.record-name strong')?.textContent || '')) && !folderCards.some((card) => card.textContent.includes('Word & text'))) throw new Error('Document files were not sorted into their own folder')
+  folderCards[0]?.querySelector('.folder-cover')?.click()
+  await pause(250)
+  if (folderCards.length && !document.querySelector('.glass-folder-card.open .folder-files button')) throw new Error('Glass folder card did not open its file list')
+  const folderView = { cards: folderCards.length, openFiles: document.querySelectorAll('.glass-folder-card.open .folder-files button').length }
   return {
     records: rows.length,
     layoutCheck: 'passed',
@@ -142,6 +159,7 @@ const result = await evaluate(`(async () => {
     agentStatus: document.querySelector('.agent-status')?.textContent?.trim(),
     railText: document.querySelector('.right-rail')?.textContent?.slice(0, 300),
     heading: document.querySelector('h1')?.textContent,
+    folderView,
     zoom: { zoomedIn, zoomedOut, zoomReset }
   }
 })()`)
