@@ -71,6 +71,11 @@ const result = await evaluate(`(async () => {
     const slots = [...grid.querySelectorAll('.preview-grid-slot')]
     if (getComputedStyle(grid).display !== 'grid' || slots.length !== widgets.length || slots.some((slot) => !slot.dataset.size)) throw new Error('Responsive widget grid did not render')
     if ([...widgets].some((widget) => !widget.querySelector('.widget-grip'))) throw new Error('Widget drag handles are missing')
+    if ([...widgets].some((widget) => {
+      const zone = widget.querySelector('.widget-drag-zone')
+      const header = widget.querySelector('header')
+      return !zone || !zone.querySelector('.preview-file-icon') || !zone.querySelector('strong') || zone.getBoundingClientRect().width < header.getBoundingClientRect().width * 0.42
+    })) throw new Error('Widget header grab surfaces did not expand across the sidebar cards')
     const arrangedCard = widgets[1]
     const arrangedId = arrangedCard.dataset.previewId
     const targetBounds = widgets[0].getBoundingClientRect()
