@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CATEGORIES, type AgentAnswer, type AgentStatus, type Category, type FilePreview, type OperationResult, type VaultItem, type VaultSnapshot } from '../../shared/types'
 
-type View = 'all' | 'temporary' | 'kept' | 'stale'
+type View = 'all' | 'temporary' | 'kept' | 'stale' | 'folders'
 type SortKey = 'name' | 'category' | 'size' | 'modifiedAt'
 type Panel = 'preview' | 'agent'
 type FloatingWindow = { key: string; id: string; x: number; y: number; width: number; height: number; z: number }
@@ -132,13 +132,14 @@ export default function App(): React.JSX.Element {
     <div className="app-shell" onDragOver={(event) => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDraggingFiles(true) } }} onDragLeave={(event) => { if (event.currentTarget === event.target) setDraggingFiles(false) }} onDrop={(event) => { if (event.dataTransfer.files.length) void handleFileDrop(event) }}>
       <header className="titlebar"><div className="brand"><span className="vault-mark small">TV</span><span>TEMPVAULT</span><em>LOCAL ONLY</em></div><div className="title-actions"><button title="Ask the local agent" onClick={() => setPanel('agent')}>AI</button><button title="Toggle light mode" onClick={() => { const theme = snapshot.settings.theme === 'dark' ? 'light' : 'dark'; void window.tempVault.updateSettings({ theme, backgroundColor: theme === 'light' ? '#ffffff' : '#000000' }).then(refresh) }}>{snapshot.settings.theme === 'dark' ? '☼' : '◐'}</button></div></header>
       <aside className="sidebar">
-        <div className="nav-section"><span>LIBRARY</span><Nav active={view === 'all'} label="All files" count={snapshot.items.length} glyph="01" onClick={() => setView('all')} /><Nav active={view === 'temporary'} label="Temporary" count={snapshot.totals.temporary} glyph="02" onClick={() => setView('temporary')} /><Nav active={view === 'kept'} label="Kept" count={snapshot.totals.kept} glyph="03" onClick={() => setView('kept')} /><Nav active={view === 'stale'} label="Review" count={snapshot.totals.stale} glyph="04" onClick={() => setView('stale')} /></div>
+        <div className="nav-section"><span>LIBRARY</span><Nav active={view === 'all'} label="All files" count={snapshot.items.length} glyph="01" onClick={() => setView('all')} /><Nav active={view === 'temporary'} label="Temporary" count={snapshot.totals.temporary} glyph="02" onClick={() => setView('temporary')} /><Nav active={view === 'kept'} label="Kept" count={snapshot.totals.kept} glyph="03" onClick={() => setView('kept')} /><Nav active={view === 'stale'} label="Review" count={snapshot.totals.stale} glyph="04" onClick={() => setView('stale')} /><Nav active={view === 'folders'} label="Type folders" count={buildFolderGroups(snapshot.items).length} glyph="05" onClick={() => setView('folders')} /></div>
         <div className="nav-section"><span>TOOLS</span><button className={`nav-item ${panel === 'preview' ? 'active' : ''}`} onClick={() => setPanel('preview')}><i>PV</i><b>Previews</b><small>{previewOrder.length}</small></button><button className={`nav-item ${panel === 'agent' ? 'active' : ''}`} onClick={() => setPanel('agent')}><i>AI</i><b>File agent</b><small>LOCAL</small></button><button className="nav-item" onClick={() => void window.tempVault.openInbox()}><i>IN</i><b>Watched inbox</b></button></div>
         <div className="storage-block"><div><span>STORAGE</span><strong>{formatBytes(snapshot.totals.bytes)}</strong></div><p title={snapshot.settings.storageRoot}>{snapshot.settings.storageRoot}</p></div>
         <button className="settings-link" onClick={() => setSettingsOpen(true)}>SETTINGS <span>→</span></button>
       </aside>
 
       <main className="workspace" ref={workspaceRef} onDragOver={(event) => { if (event.dataTransfer.types.includes('application/x-tempvault-preview')) { event.preventDefault(); event.dataTransfer.dropEffect = 'move' } }} onDrop={handleWorkspaceDrop}>
+        {view === 'folders' ? <FolderLibrary items={snapshot.items} onPreview={openPreview} onContext={(event, id) => { event.preventDefault(); setContextMenu({ id, x: event.clientX, y: event.clientY }) }} /> : <>
         <section className="workspace-head"><div><p className="kicker">FILES / {view.toUpperCase()}</p><h1>{viewTitle(view)}</h1><p>{snapshot.items.length} records · {formatBytes(snapshot.totals.bytes)} on disk</p></div><div className="head-actions"><button onClick={() => void perform('Added', () => window.tempVault.addFolder())}>NEW FOLDER IMPORT</button><button className="solid" onClick={() => void perform('Added', () => window.tempVault.addFiles())}>＋ ADD FILES</button></div></section>
         <section className="metrics"><Metric label="TOTAL" value={snapshot.items.length} /><Metric label="TEMPORARY" value={snapshot.totals.temporary} /><Metric label="KEPT" value={snapshot.totals.kept} /><Metric label="REVIEW" value={snapshot.totals.stale} /></section>
         <section className="records">
@@ -149,6 +150,7 @@ export default function App(): React.JSX.Element {
           {!items.length && <div className="empty"><b>NO FILE RECORDS</b><p>{search || category !== 'all' ? 'Adjust the search or filter.' : 'Drop files anywhere or add your first record.'}</p></div>}
           {!!items.length && <Pagination page={page} count={pageCount} total={items.length} onChange={setPage} />}
         </section>
+        </>}
         {floating.map((windowState) => <FloatingPreview key={windowState.key} state={windowState} preview={previews[windowState.id]} onClose={() => setFloating((current) => current.filter((item) => item.key !== windowState.key))} onFocus={() => focusFloating(windowState.key)} onUpdate={(patch) => updateFloating(windowState.key, patch)} />)}
       </main>
 
@@ -182,6 +184,51 @@ function Pagination({ page, count, total, onChange }: { page: number; count: num
 }
 
 function Nav({ active, label, count, glyph, onClick }: { active: boolean; label: string; count: number; glyph: string; onClick(): void }): React.JSX.Element { return <button className={`nav-item ${active ? 'active' : ''}`} onClick={onClick}><i>{glyph}</i><b>{label}</b><small>{count}</small></button> }
+
+type FolderGroup = { key: string; label: string; description: string; color: string; items: VaultItem[] }
+
+const folderDefinitions: Array<Omit<FolderGroup, 'items'>> = [
+  { key: 'pdf', label: 'PDFs', description: 'PDF documents', color: '#ef4444' },
+  { key: 'word', label: 'Word & text', description: 'Documents and notes', color: '#3b82f6' },
+  { key: 'sheets', label: 'Spreadsheets', description: 'Tables and data', color: '#22c55e' },
+  { key: 'slides', label: 'Presentations', description: 'Slides and decks', color: '#f97316' },
+  { key: 'images', label: 'Images', description: 'Pictures and graphics', color: '#a855f7' },
+  { key: 'video', label: 'Videos', description: 'Video media', color: '#06b6d4' },
+  { key: 'audio', label: 'Audio', description: 'Music and recordings', color: '#ec4899' },
+  { key: 'archives', label: 'Archives', description: 'Compressed packages', color: '#f59e0b' },
+  { key: 'code', label: 'Code', description: 'Source and project files', color: '#60a5fa' },
+  { key: 'installers', label: 'Installers', description: 'Applications and setup files', color: '#fb7185' },
+  { key: 'fonts', label: 'Fonts', description: 'Typeface files', color: '#c084fc' },
+  { key: 'directories', label: 'Folders', description: 'Imported directories', color: '#eab308' },
+  { key: 'other', label: 'Other', description: 'Everything else', color: '#94a3b8' }
+]
+
+function folderKeyFor(item: VaultItem): string {
+  const extension = item.extension.toLowerCase()
+  if (extension === 'pdf') return 'pdf'
+  if (['doc', 'docx', 'odt', 'rtf', 'txt', 'md'].includes(extension)) return 'word'
+  if (['xls', 'xlsx', 'ods', 'csv', 'tsv'].includes(extension)) return 'sheets'
+  if (['ppt', 'pptx', 'odp'].includes(extension)) return 'slides'
+  return ({ Images: 'images', Videos: 'video', Audio: 'audio', Archives: 'archives', Code: 'code', Installers: 'installers', Fonts: 'fonts', Folders: 'directories' } as Partial<Record<Category, string>>)[item.category] ?? 'other'
+}
+
+function buildFolderGroups(items: VaultItem[]): FolderGroup[] {
+  return folderDefinitions.map((definition) => ({ ...definition, items: items.filter((item) => folderKeyFor(item) === definition.key).sort((a, b) => b.modifiedAt - a.modifiedAt || a.name.localeCompare(b.name)) })).filter((group) => group.items.length)
+}
+
+function FolderLibrary({ items, onPreview, onContext }: { items: VaultItem[]; onPreview(id: string): void; onContext(event: React.MouseEvent, id: string): void }): React.JSX.Element {
+  const [openKey, setOpenKey] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const groups = buildFolderGroups(items).map((group) => ({ ...group, items: group.items.filter((item) => item.name.toLowerCase().includes(query.trim().toLowerCase())) })).filter((group) => group.items.length)
+  const tilt = (event: React.PointerEvent<HTMLElement>): void => {
+    const bounds = event.currentTarget.getBoundingClientRect()
+    event.currentTarget.style.setProperty('--folder-rx', `${((event.clientY - bounds.top) / bounds.height - .5) * -5}deg`)
+    event.currentTarget.style.setProperty('--folder-ry', `${((event.clientX - bounds.left) / bounds.width - .5) * 7}deg`)
+  }
+  const resetTilt = (event: React.PointerEvent<HTMLElement>): void => { event.currentTarget.style.removeProperty('--folder-rx'); event.currentTarget.style.removeProperty('--folder-ry') }
+  return <section className="folder-library"><header className="folder-library-head"><div><p className="kicker">FILES / TYPE FOLDERS</p><h1>GLASS FOLDERS</h1><p>{groups.length} folders · {items.length} files sorted automatically</p></div><label><UiIcon name="folder" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search these folders" /></label></header><div className="folder-card-grid">{groups.map((group, index) => { const open = openKey === group.key; return <article className={`glass-folder-card ${open ? 'open' : ''}`} style={{ '--folder-color': group.color, '--folder-delay': `${index * 35}ms` } as React.CSSProperties} onPointerMove={tilt} onPointerLeave={resetTilt} key={group.key}><button className="folder-cover" aria-expanded={open} onClick={() => setOpenKey(open ? null : group.key)}><span className="folder-tab" /><span className="folder-sheets" aria-hidden="true">{group.items.slice(0, 3).map((item, sheetIndex) => <i style={{ '--sheet-index': sheetIndex } as React.CSSProperties} key={item.id}><FileIcon item={item} /></i>)}</span><span className="folder-glass"><span><UiIcon name="folder" /></span><strong>{group.label}</strong><small>{group.description}</small><b>{group.items.length} FILE{group.items.length === 1 ? '' : 'S'}</b></span></button>{open && <div className="folder-files">{group.items.map((item) => <button key={item.id} draggable onDragStart={(event) => { event.dataTransfer.setData('application/x-tempvault-file', item.id); event.dataTransfer.effectAllowed = 'copy' }} onClick={() => onPreview(item.id)} onDoubleClick={() => void window.tempVault.openItem(item.id)} onContextMenu={(event) => onContext(event, item.id)}><FileIcon item={item} /><span><strong>{item.name}</strong><small>{fileTypeLabel(item)} · {formatBytes(item.size)}</small></span><i>→</i></button>)}</div>}</article> })}</div>{!groups.length && <div className="folder-library-empty"><UiIcon name="folder" /><strong>NO MATCHING FILES</strong><span>Try another search or add files to TempVault.</span></div>}</section>
+}
+
 function Metric({ label, value }: { label: string; value: number }): React.JSX.Element { return <article><span>{label}</span><strong>{String(value).padStart(2, '0')}</strong></article> }
 function SortButton({ label, column, sort, onClick }: { label: string; column: SortKey; sort: { key: SortKey; descending: boolean }; onClick(key: SortKey): void }): React.JSX.Element { return <button onClick={() => onClick(column)}>{label}{sort.key === column ? (sort.descending ? ' ↓' : ' ↑') : ''}</button> }
 
@@ -400,7 +447,7 @@ function fileTypeLabel(item: VaultItem): string {
   return labels[extension] ?? (extension ? `${extension.toUpperCase()} file` : item.category.slice(0, -1))
 }
 
-function viewTitle(view: View): string { return ({ all: 'FILE RECORDS', temporary: 'TEMPORARY', kept: 'KEPT FILES', stale: 'NEEDS REVIEW' })[view] }
+function viewTitle(view: View): string { return ({ all: 'FILE RECORDS', temporary: 'TEMPORARY', kept: 'KEPT FILES', stale: 'NEEDS REVIEW', folders: 'GLASS FOLDERS' })[view] }
 function formatBytes(bytes: number): string { if (!bytes) return '0 B'; const units = ['B', 'KB', 'MB', 'GB', 'TB']; const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1); return `${(bytes / 1024 ** index).toFixed(index ? 1 : 0)} ${units[index]}` }
 function relativeDate(timestamp: number): string { const days = Math.floor((Date.now() - timestamp) / 86_400_000); if (days <= 0) return 'TODAY'; if (days === 1) return 'YESTERDAY'; if (days < 30) return `${days}D AGO`; return new Date(timestamp).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase() }
 function shortPath(path: string): string { const parts = path.split(/[\\/]/); return parts.slice(-3, -1).join(' / ').toUpperCase() }
