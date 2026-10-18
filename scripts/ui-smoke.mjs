@@ -51,17 +51,30 @@ const result = await evaluate(`(async () => {
   const railBefore = rail.getBoundingClientRect()
   const widthHandle = rail.querySelector('.rail-resizer-width')
   const heightHandle = rail.querySelector('.rail-resizer-height')
+  const widthDirection = railBefore.width > 400 ? 28 : -28
   widthHandle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, buttons: 1, clientX: railBefore.left, clientY: railBefore.top + 100 }))
-  window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, buttons: 1, clientX: railBefore.left - 28, clientY: railBefore.top + 100 }))
-  window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: railBefore.left - 28, clientY: railBefore.top + 100 }))
+  window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, buttons: 1, clientX: railBefore.left + widthDirection, clientY: railBefore.top + 100 }))
+  window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: railBefore.left + widthDirection, clientY: railBefore.top + 100 }))
   await pause(80)
   const railWider = rail.getBoundingClientRect()
-  if (railWider.width < railBefore.width + 20) throw new Error('Preview rail width resize failed')
+  if (Math.abs(railWider.width - railBefore.width) < 20) throw new Error('Preview rail width resize failed')
   heightHandle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, buttons: 1, clientX: railWider.left + 100, clientY: railWider.bottom }))
   window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, buttons: 1, clientX: railWider.left + 100, clientY: railWider.bottom - 24 }))
   window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: railWider.left + 100, clientY: railWider.bottom - 24 }))
   await pause(80)
   if (rail.getBoundingClientRect().height > railWider.height - 16) throw new Error('Preview rail height resize failed')
+  const layoutButtons = [...rail.querySelectorAll('.rail-layout-actions button')]
+  if (layoutButtons.length !== 2 || layoutButtons.some((button) => !button.querySelector('svg'))) throw new Error('Half-screen layout controls are missing')
+  layoutButtons[0].click(); await pause(80)
+  let halfWidth = rail.getBoundingClientRect().width
+  const expectedHalfWidth = Math.max(310, Math.min(window.innerWidth - 760, Math.round(window.innerWidth / 2))) - 8
+  if (Math.abs(halfWidth - expectedHalfWidth) > 3) { layoutButtons[0].click(); await pause(80); halfWidth = rail.getBoundingClientRect().width }
+  if (Math.abs(halfWidth - expectedHalfWidth) > 3) throw new Error('Half-screen width preset failed: got ' + halfWidth + ', expected ' + expectedHalfWidth + ', viewport ' + window.innerWidth)
+  layoutButtons[1].click(); await pause(80)
+  let halfHeight = rail.getBoundingClientRect().height
+  const expectedHalfHeight = Math.max(320, Math.round((window.innerHeight - 60) / 2))
+  if (Math.abs(halfHeight - expectedHalfHeight) > 3) { layoutButtons[1].click(); await pause(80); halfHeight = rail.getBoundingClientRect().height }
+  if (Math.abs(halfHeight - expectedHalfHeight) > 3) throw new Error('Half-screen height preset failed')
   const dock = document.querySelector('.app-dock')
   const dockBounds = dock.getBoundingClientRect()
   const workspaceBounds = document.querySelector('.workspace').getBoundingClientRect()
@@ -81,6 +94,7 @@ const result = await evaluate(`(async () => {
     const widgets = document.querySelectorAll('.preview-widget')
     if (widgets.length !== 2) throw new Error('Multi-file previews did not render')
     if ([...widgets].some((widget) => !widget.querySelector('.preview-file-icon svg'))) throw new Error('Preview file icons did not render')
+    if ([...widgets].some((widget) => widget.draggable || widget.querySelector('.widget-drag-zone')?.draggable)) throw new Error('Native browser dragging is still enabled for preview widgets')
     if ([...widgets].some((widget) => widget.getBoundingClientRect().height < 220)) throw new Error('Preview cards are too small')
     const grid = document.querySelector('.preview-grid')
     const slots = [...grid.querySelectorAll('.preview-grid-slot')]
@@ -179,6 +193,7 @@ const result = await evaluate(`(async () => {
     previewCheck,
     wordPreview,
     previewCompatibility,
+    halfScreen: { width: halfWidth, height: halfHeight },
     floating: document.querySelectorAll('.floating-preview').length,
     theme,
     background,

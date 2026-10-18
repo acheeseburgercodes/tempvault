@@ -159,6 +159,19 @@ export default function App(): React.JSX.Element {
     setRailSize((current) => ({ width: Math.max(310, Math.min(window.innerWidth - 760, current.width + horizontal)), height: Math.max(320, Math.min(window.innerHeight - 60, current.height + vertical)) }))
   }
 
+  function toggleRailPreset(preset: 'half-width' | 'half-height'): void {
+    setRailSize((current) => {
+      if (preset === 'half-width') {
+        const half = Math.max(310, Math.min(window.innerWidth - 760, Math.round(window.innerWidth / 2)))
+        const compact = window.innerWidth <= 1220 ? 330 : 390
+        return { ...current, width: Math.abs(current.width - half) < 12 ? compact : half }
+      }
+      const available = window.innerHeight - 60
+      const half = Math.max(320, Math.round(available / 2))
+      return { ...current, height: Math.abs(current.height - half) < 12 ? available : half }
+    })
+  }
+
   if (!snapshot) return <div className="loading"><div className="vault-mark">TV</div><span>OPENING VAULT</span></div>
   const selectedItems = snapshot.items.filter((item) => selected.has(item.id))
 
@@ -188,11 +201,11 @@ export default function App(): React.JSX.Element {
         {floating.map((windowState) => <FloatingPreview key={windowState.key} state={windowState} preview={previews[windowState.id]} onClose={() => setFloating((current) => current.filter((item) => item.key !== windowState.key))} onFocus={() => focusFloating(windowState.key)} onUpdate={(patch) => updateFloating(windowState.key, patch)} />)}
       </main>
 
-      <aside className="right-rail" onDragOver={(event) => { if (event.dataTransfer.types.includes('application/x-tempvault-file')) { event.preventDefault(); event.currentTarget.classList.add('drop-ready') } }} onDragLeave={(event) => event.currentTarget.classList.remove('drop-ready')} onDrop={(event) => { event.preventDefault(); event.currentTarget.classList.remove('drop-ready'); const id = event.dataTransfer.getData('application/x-tempvault-file'); if (id) openPreview(id) }}>
+      <aside className="right-rail" onDragStart={(event) => { if (!event.dataTransfer.types.includes('application/x-tempvault-file')) event.preventDefault() }} onDragOver={(event) => { if (event.dataTransfer.types.includes('application/x-tempvault-file')) { event.preventDefault(); event.currentTarget.classList.add('drop-ready') } }} onDragLeave={(event) => event.currentTarget.classList.remove('drop-ready')} onDrop={(event) => { event.preventDefault(); event.currentTarget.classList.remove('drop-ready'); const id = event.dataTransfer.getData('application/x-tempvault-file'); if (id) openPreview(id) }}>
         <div className="rail-resizer rail-resizer-width" role="separator" aria-label="Resize preview panel width" aria-orientation="vertical" tabIndex={0} onPointerDown={(event) => startRailResize(event, 'width')} onKeyDown={(event) => resizeRailWithKeyboard(event, 'width')} />
         <div className="rail-resizer rail-resizer-height" role="separator" aria-label="Resize preview panel height" aria-orientation="horizontal" tabIndex={0} onPointerDown={(event) => startRailResize(event, 'height')} onKeyDown={(event) => resizeRailWithKeyboard(event, 'height')} />
         <div className="rail-resizer rail-resizer-corner" role="separator" aria-label="Resize preview panel" tabIndex={0} onPointerDown={(event) => startRailResize(event, 'both')} onKeyDown={(event) => resizeRailWithKeyboard(event, 'both')} />
-        <div className="rail-tabs"><button className={panel === 'preview' ? 'active' : ''} onClick={() => setPanel('preview')}>PREVIEW <span>{previewOrder.length}</span></button><button className={panel === 'agent' ? 'active' : ''} onClick={() => setPanel('agent')}>ASK AI</button></div>
+        <div className="rail-tabs"><button className={panel === 'preview' ? 'active' : ''} onClick={() => setPanel('preview')}>PREVIEW <span>{previewOrder.length}</span></button><button className={panel === 'agent' ? 'active' : ''} onClick={() => setPanel('agent')}>ASK AI</button><div className="rail-layout-actions"><button title="Toggle half-screen width" aria-label="Toggle half-screen width" onClick={() => toggleRailPreset('half-width')}><UiIcon name="halfWidth" /></button><button title="Toggle half-screen height" aria-label="Toggle half-screen height" onClick={() => toggleRailPreset('half-height')}><UiIcon name="halfHeight" /></button></div></div>
         {panel === 'preview' ? <PreviewRail order={previewOrder} previews={previews} onReorder={setPreviewOrder} onFloat={createFloating} onMove={(id, x, y) => { createFloating(id, x, y); setPreviewOrder((current) => current.filter((value) => value !== id)) }} onRemove={(id) => setPreviewOrder((current) => current.filter((value) => value !== id))} /> : <AgentPanel selectedIds={[...selected]} settings={snapshot.settings} onSettings={() => setSettingsOpen(true)} />}
       </aside>
       <Dock onAdd={() => void perform('Added', () => window.tempVault.addFiles())} onInbox={() => void window.tempVault.openInbox()} onPreview={() => setPanel('preview')} onAgent={() => setPanel('agent')} onZoomIn={() => void changeZoom('in')} onZoomOut={() => void changeZoom('out')} onRefresh={() => void refresh()} onSettings={() => setSettingsOpen(true)} active={panel} />
@@ -316,6 +329,7 @@ function PreviewRail({ order, previews, onReorder, onFloat, onMove, onRemove }: 
 
   function startInteractiveMove(event: React.PointerEvent<HTMLButtonElement>, id: string): void {
     event.preventDefault(); event.stopPropagation()
+    try { event.currentTarget.setPointerCapture?.(event.pointerId) } catch { /* Synthetic input and older runtimes may not expose an active pointer. */ }
     const card = event.currentTarget.closest<HTMLElement>('.preview-widget'); if (!card) return
     const bounds = card.getBoundingClientRect(); const startX = event.clientX; const startY = event.clientY
     let active = false; let lastTarget = id
@@ -343,19 +357,20 @@ function PreviewRail({ order, previews, onReorder, onFloat, onMove, onRemove }: 
       const overId = target?.dataset.previewId ?? null; setTargetId(overId)
       if (overId && overId !== lastTarget) { lastTarget = overId; reorder(id, overId) }
     }
+    const blockNativeDrag = (nativeEvent: Event): void => nativeEvent.preventDefault()
     const up = (next: PointerEvent): void => {
-      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancel)
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancel); window.removeEventListener('dragstart', blockNativeDrag, true); window.removeEventListener('selectstart', blockNativeDrag, true)
       card.classList.remove('drag-lifted'); document.body.classList.remove('preview-is-dragging'); ['--drag-left', '--drag-top', '--drag-width', '--drag-height', '--drag-x', '--drag-y'].forEach((name) => card.style.removeProperty(name)); setDraggingId(null); setTargetId(null)
       if (!active) return
       const workspace = document.querySelector('.workspace')?.getBoundingClientRect()
       if (workspace && next.clientX >= workspace.left && next.clientX <= workspace.right && next.clientY >= workspace.top && next.clientY <= workspace.bottom) onMove(id, next.clientX, next.clientY)
     }
     const cancel = (): void => up(new PointerEvent('pointercancel', { clientX: startX, clientY: startY }))
-    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', cancel)
+    window.addEventListener('dragstart', blockNativeDrag, true); window.addEventListener('selectstart', blockNativeDrag, true); window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', cancel)
   }
 
   if (!order.length) return <div className="rail-empty"><div><UiIcon name="preview" /></div><b>SELECT FILES TO PREVIEW</b><p>Choose one or many file records. Drag a preview card into the workspace to move it.</p></div>
-  return <section className={`preview-grid-shell ${draggingId ? 'is-rearranging' : ''}`}><div className="preview-grid-guide"><span><UiIcon name="grip" /> {draggingId ? 'REARRANGING WIDGETS' : 'DRAG WIDGETS UP OR DOWN'}</span><small>{order.length} WIDGET{order.length === 1 ? '' : 'S'}</small></div><div className="preview-grid" ref={surfaceRef}>{order.map((id, index) => { const name = previews[id]?.item.name ?? 'Loading…'; return <div className={`preview-grid-slot ${draggingId === id ? 'drag-origin' : ''} ${targetId === id ? 'drop-target' : ''}`} data-preview-id={id} key={id}><article className={`preview-widget ${draggingId === id ? 'drag-lifted' : ''}`} data-preview-id={id}><header><button className="widget-drag-zone widget-grip" title="Drag up or down to rearrange" aria-label={`Rearrange ${name}, item ${index + 1} of ${order.length}`} onPointerDown={(event) => startInteractiveMove(event, id)} onKeyDown={(event) => moveWithKeyboard(event, id)}><UiIcon name="grip" /><span className="preview-file-icon">{previews[id] ? <FileIcon item={previews[id].item} /> : <UiIcon name="file" />}</span><strong>{name}</strong></button><button title="Move into workspace" onClick={() => { onFloat(id); onRemove(id) }}><UiIcon name="detach" /></button><button title="Close preview" onClick={() => onRemove(id)}>×</button></header><PreviewContent preview={previews[id]} compact /></article></div> })}</div><div className="sr-only" aria-live="polite">{draggingId ? `Rearranging ${previews[draggingId]?.item.name ?? 'preview widget'}` : ''}</div></section>
+  return <section className={`preview-grid-shell ${draggingId ? 'is-rearranging' : ''}`} onDragStart={(event) => event.preventDefault()}><div className="preview-grid-guide"><span><UiIcon name="grip" /> {draggingId ? 'REARRANGING WIDGETS' : 'DRAG WIDGETS UP OR DOWN'}</span><small>{order.length} WIDGET{order.length === 1 ? '' : 'S'}</small></div><div className="preview-grid" ref={surfaceRef}>{order.map((id, index) => { const name = previews[id]?.item.name ?? 'Loading…'; return <div className={`preview-grid-slot ${draggingId === id ? 'drag-origin' : ''} ${targetId === id ? 'drop-target' : ''}`} data-preview-id={id} key={id}><article className={`preview-widget ${draggingId === id ? 'drag-lifted' : ''}`} draggable={false} data-preview-id={id}><header><button className="widget-drag-zone widget-grip" draggable={false} title="Drag up or down to rearrange" aria-label={`Rearrange ${name}, item ${index + 1} of ${order.length}`} onPointerDown={(event) => startInteractiveMove(event, id)} onKeyDown={(event) => moveWithKeyboard(event, id)}><UiIcon name="grip" /><span className="preview-file-icon">{previews[id] ? <FileIcon item={previews[id].item} /> : <UiIcon name="file" />}</span><strong>{name}</strong></button><button title="Move into workspace" onClick={() => { onFloat(id); onRemove(id) }}><UiIcon name="detach" /></button><button title="Close preview" onClick={() => onRemove(id)}>×</button></header><PreviewContent preview={previews[id]} compact /></article></div> })}</div><div className="sr-only" aria-live="polite">{draggingId ? `Rearranging ${previews[draggingId]?.item.name ?? 'preview widget'}` : ''}</div></section>
 }
 
 function PreviewContent({ preview, compact = false }: { preview?: FilePreview; compact?: boolean }): React.JSX.Element {
@@ -441,6 +456,8 @@ function UiIcon({ name }: { name: string }): React.JSX.Element {
   if (name === 'settings') return <svg {...common}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" /></svg>
   if (name === 'zoomIn') return <svg {...common}><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5M10.5 7.5v6M7.5 10.5h6" /></svg>
   if (name === 'zoomOut') return <svg {...common}><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5M7.5 10.5h6" /></svg>
+  if (name === 'halfWidth') return <svg {...common}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M12 4v16M15 12h4M17 10l2 2-2 2" /></svg>
+  if (name === 'halfHeight') return <svg {...common}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 12h18M12 15v3M10 17l2 2 2-2" /></svg>
   if (name === 'grip') return <svg {...common}><circle cx="8" cy="7" r="1" fill="currentColor" stroke="none" /><circle cx="16" cy="7" r="1" fill="currentColor" stroke="none" /><circle cx="8" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="16" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="8" cy="17" r="1" fill="currentColor" stroke="none" /><circle cx="16" cy="17" r="1" fill="currentColor" stroke="none" /></svg>
   if (name === 'wide') return <svg {...common}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M8 12h8M14 9l3 3-3 3M10 9l-3 3 3 3" /></svg>
   if (name === 'compact') return <svg {...common}><rect x="5" y="4" width="14" height="16" rx="2" /><path d="M9 12h6M11 9l-3 3 3 3M13 9l3 3-3 3" /></svg>
