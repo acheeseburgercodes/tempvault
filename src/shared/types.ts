@@ -26,6 +26,10 @@ export interface VaultSettings {
   agentModel: string
   accentColor: string
   backgroundColor: string
+  gradientEnabled: boolean
+  gradientColor: string
+  secondaryColor: string
+  autoPreview: boolean
   windowOpacity: number
 }
 
@@ -83,6 +87,6 @@ export interface TempVaultApi {
   zoomIn(): Promise<number>
   zoomOut(): Promise<number>
   zoomReset(): Promise<number>
-  updateSettings(settings: Partial<Pick<VaultSettings, 'staleDays' | 'launchAtStartup' | 'theme' | 'agentModel' | 'accentColor' | 'backgroundColor' | 'windowOpacity'>>): Promise<VaultSettings>
+  updateSettings(settings: Partial<Pick<VaultSettings, 'staleDays' | 'launchAtStartup' | 'theme' | 'agentModel' | 'accentColor' | 'backgroundColor' | 'gradientEnabled' | 'gradientColor' | 'secondaryColor' | 'autoPreview' | 'windowOpacity'>>): Promise<VaultSettings>
   onVaultChanged(callback: () => void): () => void
 }

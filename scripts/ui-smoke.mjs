@@ -43,11 +43,15 @@ const result = await evaluate(`(async () => {
   const workspaceStyle = getComputedStyle(document.querySelector('.workspace'))
   const shellStyle = getComputedStyle(document.querySelector('.app-shell'))
   if (sidebarStyle.backdropFilter === 'none') throw new Error('Sidebar glass blur is missing')
-  if (shellStyle.backgroundColor === 'rgba(0, 0, 0, 0)' || workspaceStyle.backgroundColor === 'rgba(0, 0, 0, 0)') throw new Error('Opaque panel canvas is missing')
+  if ((shellStyle.backgroundColor === 'rgba(0, 0, 0, 0)' && shellStyle.backgroundImage === 'none') || (workspaceStyle.backgroundColor === 'rgba(0, 0, 0, 0)' && workspaceStyle.backgroundImage === 'none')) throw new Error('Primary background or gradient canvas is missing')
   const leftOutline = getComputedStyle(document.querySelector('.sidebar'), '::after')
   const rightOutline = getComputedStyle(document.querySelector('.right-rail'), '::after')
   if (leftOutline.borderTopColor !== rightOutline.borderTopColor || leftOutline.borderTopWidth !== rightOutline.borderTopWidth || leftOutline.borderRadius !== rightOutline.borderRadius) throw new Error('Side panel outlines do not match')
   const rail = document.querySelector('.right-rail')
+  rail.classList.add('drop-ready')
+  const dropIndicator = getComputedStyle(rail, '::after')
+  if (parseFloat(dropIndicator.borderRadius) > 30 || dropIndicator.backgroundColor === 'rgb(255, 255, 255)') throw new Error('Sidebar drop target still renders as a white oval')
+  rail.classList.remove('drop-ready')
   const railBefore = rail.getBoundingClientRect()
   const widthHandle = rail.querySelector('.rail-resizer-width')
   const heightHandle = rail.querySelector('.rail-resizer-height')
@@ -63,18 +67,6 @@ const result = await evaluate(`(async () => {
   window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: railWider.left + 100, clientY: railWider.bottom - 24 }))
   await pause(80)
   if (rail.getBoundingClientRect().height > railWider.height - 16) throw new Error('Preview rail height resize failed')
-  const layoutButtons = [...rail.querySelectorAll('.rail-layout-actions button')]
-  if (layoutButtons.length !== 2 || layoutButtons.some((button) => !button.querySelector('svg'))) throw new Error('Half-screen layout controls are missing')
-  layoutButtons[0].click(); await pause(80)
-  let halfWidth = rail.getBoundingClientRect().width
-  const expectedHalfWidth = Math.max(310, Math.min(window.innerWidth - 760, Math.round(window.innerWidth / 2))) - 8
-  if (Math.abs(halfWidth - expectedHalfWidth) > 3) { layoutButtons[0].click(); await pause(80); halfWidth = rail.getBoundingClientRect().width }
-  if (Math.abs(halfWidth - expectedHalfWidth) > 3) throw new Error('Half-screen width preset failed: got ' + halfWidth + ', expected ' + expectedHalfWidth + ', viewport ' + window.innerWidth)
-  layoutButtons[1].click(); await pause(80)
-  let halfHeight = rail.getBoundingClientRect().height
-  const expectedHalfHeight = Math.max(320, Math.round((window.innerHeight - 60) / 2))
-  if (Math.abs(halfHeight - expectedHalfHeight) > 3) { layoutButtons[1].click(); await pause(80); halfHeight = rail.getBoundingClientRect().height }
-  if (Math.abs(halfHeight - expectedHalfHeight) > 3) throw new Error('Half-screen height preset failed')
   const dock = document.querySelector('.app-dock')
   const dockBounds = dock.getBoundingClientRect()
   const workspaceBounds = document.querySelector('.workspace').getBoundingClientRect()
@@ -88,8 +80,15 @@ const result = await evaluate(`(async () => {
       if (checkbox.checked) checkbox.click()
     }
     await pause(100)
-    rows[0].querySelector('input').click()
-    rows[1].querySelector('input').click()
+    rows[0].click()
+    await pause(500)
+    const quickPreview = document.querySelector('.quick-preview')
+    if (!quickPreview || !quickPreview.querySelector('.quick-preview-content')) throw new Error('Automatic quick preview did not open for the selected file')
+    quickPreview.querySelector('button[title="Close quick preview"]').click()
+    await pause(120)
+    if (document.querySelector('.quick-preview')) throw new Error('Quick preview could not be closed')
+    rows[0].querySelector('button[title="Preview"]').click()
+    rows[1].querySelector('button[title="Preview"]').click()
     await pause(500)
     const widgets = document.querySelectorAll('.preview-widget')
     if (widgets.length !== 2) throw new Error('Multi-file previews did not render')
@@ -98,7 +97,7 @@ const result = await evaluate(`(async () => {
     if ([...widgets].some((widget) => widget.getBoundingClientRect().height < 220)) throw new Error('Preview cards are too small')
     const grid = document.querySelector('.preview-grid')
     const slots = [...grid.querySelectorAll('.preview-grid-slot')]
-    if (getComputedStyle(grid).display !== 'grid' || getComputedStyle(grid).gridTemplateColumns.split(' ').length !== 1 || slots.length !== widgets.length) throw new Error('Vertical widget grid did not render')
+    if (getComputedStyle(grid).display !== 'grid' || getComputedStyle(grid).gridTemplateColumns.split(' ').length !== 2 || slots.length !== widgets.length) throw new Error('Two-column half-width widget grid did not render')
     if ([...widgets].some((widget) => !widget.querySelector('.widget-grip'))) throw new Error('Widget drag handles are missing')
     if ([...widgets].some((widget) => {
       const zone = widget.querySelector('.widget-drag-zone')
@@ -180,6 +179,8 @@ const result = await evaluate(`(async () => {
   folderCards[0]?.querySelector('.folder-cover')?.click()
   await pause(250)
   if (folderCards.length && !document.querySelector('.glass-folder-card.open .folder-files button')) throw new Error('Glass folder card did not open its file list')
+  const folderReveal = document.querySelector('.glass-folder-card.open .folder-files-reveal')
+  if (folderReveal && getComputedStyle(folderReveal).transitionDuration.split(',').every((duration) => parseFloat(duration) === 0)) throw new Error('Glass folder expansion is not animated')
   const folderView = { cards: folderCards.length, openFiles: document.querySelectorAll('.glass-folder-card.open .folder-files button').length }
   return {
     records: rows.length,
@@ -193,7 +194,7 @@ const result = await evaluate(`(async () => {
     previewCheck,
     wordPreview,
     previewCompatibility,
-    halfScreen: { width: halfWidth, height: halfHeight },
+    quickPreview: 'passed',
     floating: document.querySelectorAll('.floating-preview').length,
     theme,
     background,

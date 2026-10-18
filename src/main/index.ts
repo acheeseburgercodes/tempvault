@@ -143,7 +143,7 @@ function registerIpc(): void {
   ipcMain.handle('agent:ask', (_event, question: string, focusedIds?: string[]) => askLocalAgent(service, question, focusedIds))
   ipcMain.handle('vault:open-inbox', () => shell.openPath(service.inbox))
   ipcMain.handle('app:zoom', (_event, direction: 'in' | 'out' | 'reset') => applyZoom(direction))
-  ipcMain.handle('vault:update-settings', async (_event, patch: Partial<Pick<VaultSettings, 'staleDays' | 'launchAtStartup' | 'theme' | 'agentModel' | 'accentColor' | 'backgroundColor' | 'windowOpacity'>>) => {
+  ipcMain.handle('vault:update-settings', async (_event, patch: Partial<Pick<VaultSettings, 'staleDays' | 'launchAtStartup' | 'theme' | 'agentModel' | 'accentColor' | 'backgroundColor' | 'gradientEnabled' | 'gradientColor' | 'secondaryColor' | 'autoPreview' | 'windowOpacity'>>) => {
     const current = await service.getSettings()
     const settings: VaultSettings = {
       ...current,
@@ -153,6 +153,10 @@ function registerIpc(): void {
       agentModel: typeof patch.agentModel === 'string' && patch.agentModel.trim() ? patch.agentModel.trim() : current.agentModel,
       accentColor: typeof patch.accentColor === 'string' && /^#[0-9a-f]{6}$/i.test(patch.accentColor) ? patch.accentColor : current.accentColor,
       backgroundColor: typeof patch.backgroundColor === 'string' && /^#[0-9a-f]{6}$/i.test(patch.backgroundColor) ? patch.backgroundColor : current.backgroundColor,
+      gradientEnabled: typeof patch.gradientEnabled === 'boolean' ? patch.gradientEnabled : current.gradientEnabled,
+      gradientColor: typeof patch.gradientColor === 'string' && /^#[0-9a-f]{6}$/i.test(patch.gradientColor) ? patch.gradientColor : current.gradientColor,
+      secondaryColor: typeof patch.secondaryColor === 'string' && /^#[0-9a-f]{6}$/i.test(patch.secondaryColor) ? patch.secondaryColor : current.secondaryColor,
+      autoPreview: typeof patch.autoPreview === 'boolean' ? patch.autoPreview : current.autoPreview,
       windowOpacity: typeof patch.windowOpacity === 'number' ? Math.max(0.45, Math.min(0.9, patch.windowOpacity)) : current.windowOpacity
     }
     await service.saveSettings(settings)

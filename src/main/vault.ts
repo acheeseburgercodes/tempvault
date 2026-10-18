@@ -43,7 +43,7 @@ export class VaultService {
 
   async initialize(): Promise<void> {
     await Promise.all([this.inbox, this.temporary, this.kept].map((path) => mkdir(path, { recursive: true })))
-    if (!existsSync(this.configPath)) await this.saveSettings({ storageRoot: this.root, staleDays: 7, launchAtStartup: false, theme: 'dark', agentModel: 'tempvault-agent', accentColor: '#ffffff', backgroundColor: '#000000', windowOpacity: 0.72 })
+    if (!existsSync(this.configPath)) await this.saveSettings({ storageRoot: this.root, staleDays: 7, launchAtStartup: false, theme: 'dark', agentModel: 'tempvault-agent', accentColor: '#d6c7b2', backgroundColor: '#080a0b', gradientEnabled: true, gradientColor: '#17120f', secondaryColor: '#463f37', autoPreview: true, windowOpacity: 0.72 })
   }
 
   async getSettings(): Promise<VaultSettings> {
@@ -58,10 +58,14 @@ export class VaultService {
         agentModel: typeof parsed.agentModel === 'string' && parsed.agentModel.trim() ? parsed.agentModel.trim() : 'tempvault-agent',
         accentColor: validColor(parsed.accentColor, '#ffffff'),
         backgroundColor: validColor(parsed.backgroundColor, parsed.theme === 'light' ? '#ffffff' : '#000000'),
+        gradientEnabled: parsed.gradientEnabled !== false,
+        gradientColor: validColor(parsed.gradientColor, parsed.theme === 'light' ? '#ede6dc' : '#17120f'),
+        secondaryColor: validColor(parsed.secondaryColor, parsed.theme === 'light' ? '#d8cdc0' : '#463f37'),
+        autoPreview: parsed.autoPreview !== false,
         windowOpacity: typeof parsed.windowOpacity === 'number' ? Math.max(0.45, Math.min(0.9, parsed.windowOpacity)) : 0.72
       }
     } catch {
-      return { storageRoot: this.root, staleDays: 7, launchAtStartup: false, theme: 'dark', agentModel: 'tempvault-agent', accentColor: '#ffffff', backgroundColor: '#000000', windowOpacity: 0.72 }
+      return { storageRoot: this.root, staleDays: 7, launchAtStartup: false, theme: 'dark', agentModel: 'tempvault-agent', accentColor: '#d6c7b2', backgroundColor: '#080a0b', gradientEnabled: true, gradientColor: '#17120f', secondaryColor: '#463f37', autoPreview: true, windowOpacity: 0.72 }
     }
   }
 
