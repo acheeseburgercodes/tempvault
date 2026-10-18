@@ -169,6 +169,13 @@ const result = await evaluate(`(async () => {
   const zoomedOut = await window.tempVault.zoomOut()
   const zoomReset = await window.tempVault.zoomReset()
   if (!(zoomedIn > zoomedOut) || zoomReset !== 1) throw new Error('Zoom controls failed')
+  const settingsButton = [...document.querySelectorAll('.app-dock button')].find((button) => button.getAttribute('aria-label') === 'Appearance')
+  settingsButton?.click()
+  await pause(250)
+  const retentionRow = [...document.querySelectorAll('.setting-row')].find((row) => row.textContent.includes('AUTO-DELETE TEMPORARY FILES'))
+  if (!retentionRow || !retentionRow.textContent.includes('14 days') || !retentionRow.textContent.includes('Recycle Bin') || !retentionRow.textContent.includes('Kept files are always excluded') || !retentionRow.querySelector('input[type="checkbox"]')) throw new Error('Auto-delete setting does not explain its safeguards')
+  document.querySelector('.modal header button')?.click()
+  await pause(150)
   const vaultSnapshot = await window.tempVault.getSnapshot()
   const previewCompatibility = {}
   for (const extension of ['doc', 'docx', 'pdf', 'ppt', 'pptx']) {
