@@ -42,7 +42,8 @@ const result = await evaluate(`(async () => {
   const sidebarStyle = getComputedStyle(document.querySelector('.sidebar'))
   const workspaceStyle = getComputedStyle(document.querySelector('.workspace'))
   const shellStyle = getComputedStyle(document.querySelector('.app-shell'))
-  if (sidebarStyle.backdropFilter === 'none') throw new Error('Sidebar glass blur is missing')
+  if (sidebarStyle.backdropFilter !== 'none') throw new Error('Legacy sidebar glass blur is still enabled')
+  if (getComputedStyle(document.querySelector('.sidebar'), '::before').display !== 'none') throw new Error('Animated glass overlay is still visible')
   if ((shellStyle.backgroundColor === 'rgba(0, 0, 0, 0)' && shellStyle.backgroundImage === 'none') || (workspaceStyle.backgroundColor === 'rgba(0, 0, 0, 0)' && workspaceStyle.backgroundImage === 'none')) throw new Error('Primary background or gradient canvas is missing')
   const leftOutline = getComputedStyle(document.querySelector('.sidebar'), '::after')
   const rightOutline = getComputedStyle(document.querySelector('.right-rail'), '::after')
@@ -97,7 +98,17 @@ const result = await evaluate(`(async () => {
     if ([...widgets].some((widget) => widget.getBoundingClientRect().height < 220)) throw new Error('Preview cards are too small')
     const grid = document.querySelector('.preview-grid')
     const slots = [...grid.querySelectorAll('.preview-grid-slot')]
-    if (getComputedStyle(grid).display !== 'grid' || getComputedStyle(grid).gridTemplateColumns.split(' ').length !== 2 || slots.length !== widgets.length) throw new Error('Two-column half-width widget grid did not render')
+    if (getComputedStyle(grid).display !== 'grid' || getComputedStyle(grid).gridTemplateColumns.split(' ').length !== 12 || slots.length !== widgets.length) throw new Error('Twelve-column resizable widget grid did not render')
+    if (slots.some((slot) => Number(getComputedStyle(slot).getPropertyValue('--widget-span')) !== 6)) throw new Error('Pinned previews do not default to two equal half-width panels')
+    const resizeHandle = widgets[0].querySelector('.widget-resize-handle')
+    if (!resizeHandle) throw new Error('Per-panel resize handle is missing')
+    const sizeBefore = widgets[0].getBoundingClientRect()
+    resizeHandle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 7, buttons: 1, clientX: sizeBefore.right - 4, clientY: sizeBefore.bottom - 4 }))
+    window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 7, buttons: 1, clientX: sizeBefore.right + 70, clientY: sizeBefore.bottom + 45 }))
+    window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 7, clientX: sizeBefore.right + 70, clientY: sizeBefore.bottom + 45 }))
+    await pause(120)
+    const sizeAfter = widgets[0].getBoundingClientRect()
+    if (sizeAfter.height < sizeBefore.height + 35 || Number(getComputedStyle(slots[0]).getPropertyValue('--widget-span')) <= 6) throw new Error('Pinned preview tile did not resize freely')
     if ([...widgets].some((widget) => !widget.querySelector('.widget-grip'))) throw new Error('Widget drag handles are missing')
     if ([...widgets].some((widget) => {
       const zone = widget.querySelector('.widget-drag-zone')
@@ -187,9 +198,9 @@ const result = await evaluate(`(async () => {
     layoutCheck: 'passed',
     maxRowHeight,
     dockOffset,
-    sidebarGlass: { background: sidebarStyle.backgroundColor, blur: sidebarStyle.backdropFilter },
+    sidebarSurface: { background: sidebarStyle.backgroundColor, blur: sidebarStyle.backdropFilter },
     panelOutline: { color: leftOutline.borderTopColor, width: leftOutline.borderTopWidth, radius: leftOutline.borderRadius },
-    themedSidebarGlass: { background: themedSidebarStyle.backgroundColor, blur: themedSidebarStyle.backdropFilter },
+    themedSidebarSurface: { background: themedSidebarStyle.backgroundColor, blur: themedSidebarStyle.backdropFilter },
     lightSelection: { activeNavBackground, bulkBackground },
     previewCheck,
     wordPreview,
