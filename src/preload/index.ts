@@ -18,7 +18,7 @@ const api: TempVaultApi & { pathForFile(file: File): string } = {
   zoomIn: () => ipcRenderer.invoke('app:zoom', 'in'),
   zoomOut: () => ipcRenderer.invoke('app:zoom', 'out'),
   zoomReset: () => ipcRenderer.invoke('app:zoom', 'reset'),
-  updateSettings: (settings: Partial<Pick<VaultSettings, 'staleDays' | 'launchAtStartup' | 'theme' | 'agentModel' | 'accentColor' | 'backgroundColor' | 'windowOpacity'>>) => ipcRenderer.invoke('vault:update-settings', settings),
+  updateSettings: (settings: Partial<Pick<VaultSettings, 'staleDays' | 'launchAtStartup' | 'theme' | 'agentModel' | 'accentColor' | 'backgroundColor' | 'gradientEnabled' | 'gradientColor' | 'secondaryColor' | 'autoPreview' | 'windowOpacity'>>) => ipcRenderer.invoke('vault:update-settings', settings),
   onVaultChanged: (callback) => {
     const listener = (): void => callback()
     ipcRenderer.on('vault:changed', listener)
