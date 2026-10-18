@@ -7,12 +7,15 @@ import { VaultService } from './vault'
 import type { OperationResult, VaultSettings } from '../shared/types'
 import { createPreview } from './preview'
 import { askLocalAgent, getAgentStatus } from './local-agent'
+import { AUTO_DELETE_INTERVAL_MS, isAutoDeleteCandidate } from './retention'
 
 const service = new VaultService()
 let mainWindow: BrowserWindow | null = null
 let watcher: FSWatcher | null = null
 let sortTimer: NodeJS.Timeout | null = null
 let revealTimer: NodeJS.Timeout | null = null
+let autoDeleteTimer: NodeJS.Timeout | null = null
+let autoDeleteRunning = false
 
 function logStartup(message: string, error?: unknown): void {
   try {
@@ -98,6 +101,35 @@ async function startWatcher(): Promise<void> {
   })
 }
 
+async function runAutoDelete(): Promise<void> {
+  if (autoDeleteRunning) return
+  autoDeleteRunning = true
+  try {
+    const snapshot = await service.snapshot()
+    if (!snapshot.settings.autoDeleteEnabled) return
+    const candidates = snapshot.items.filter((item) => isAutoDeleteCandidate(item))
+    let changed = false
+    for (const item of candidates) {
+      try {
+        service.assertInsideVault(item.path)
+        await shell.trashItem(item.path)
+        changed = true
+        logStartup(`Auto-delete moved to Recycle Bin: ${item.path}`)
+      } catch (error) {
+        logStartup(`Auto-delete could not recycle: ${item.path}`, error)
+      }
+    }
+    if (changed) await notifyChanged()
+  } finally {
+    autoDeleteRunning = false
+  }
+}
+
+function startAutoDeleteSchedule(): void {
+  if (autoDeleteTimer) clearInterval(autoDeleteTimer)
+  autoDeleteTimer = setInterval(() => { void runAutoDelete() }, AUTO_DELETE_INTERVAL_MS)
+}
+
 function registerIpc(): void {
   ipcMain.handle('vault:snapshot', () => service.snapshot())
   ipcMain.handle('vault:add-files', async (_event, paths?: string[]) => {
@@ -143,7 +175,7 @@ function registerIpc(): void {
   ipcMain.handle('agent:ask', (_event, question: string, focusedIds?: string[]) => askLocalAgent(service, question, focusedIds))
   ipcMain.handle('vault:open-inbox', () => shell.openPath(service.inbox))
   ipcMain.handle('app:zoom', (_event, direction: 'in' | 'out' | 'reset') => applyZoom(direction))
-  ipcMain.handle('vault:update-settings', async (_event, patch: Partial<Pick<VaultSettings, 'staleDays' | 'launchAtStartup' | 'theme' | 'agentModel' | 'accentColor' | 'backgroundColor' | 'gradientEnabled' | 'gradientColor' | 'secondaryColor' | 'autoPreview' | 'windowOpacity'>>) => {
+  ipcMain.handle('vault:update-settings', async (_event, patch: Partial<Pick<VaultSettings, 'staleDays' | 'launchAtStartup' | 'theme' | 'agentModel' | 'accentColor' | 'backgroundColor' | 'gradientEnabled' | 'gradientColor' | 'secondaryColor' | 'autoPreview' | 'autoDeleteEnabled' | 'windowOpacity'>>) => {
     const current = await service.getSettings()
     const settings: VaultSettings = {
       ...current,
@@ -157,11 +189,13 @@ function registerIpc(): void {
       gradientColor: typeof patch.gradientColor === 'string' && /^#[0-9a-f]{6}$/i.test(patch.gradientColor) ? patch.gradientColor : current.gradientColor,
       secondaryColor: typeof patch.secondaryColor === 'string' && /^#[0-9a-f]{6}$/i.test(patch.secondaryColor) ? patch.secondaryColor : current.secondaryColor,
       autoPreview: typeof patch.autoPreview === 'boolean' ? patch.autoPreview : current.autoPreview,
+      autoDeleteEnabled: typeof patch.autoDeleteEnabled === 'boolean' ? patch.autoDeleteEnabled : current.autoDeleteEnabled,
       windowOpacity: typeof patch.windowOpacity === 'number' ? Math.max(0.45, Math.min(0.9, patch.windowOpacity)) : current.windowOpacity
     }
     await service.saveSettings(settings)
     app.setLoginItemSettings({ openAtLogin: settings.launchAtStartup })
     mainWindow?.setTitleBarOverlay({ color: settings.backgroundColor, symbolColor: settings.theme === 'light' ? '#000000' : '#ffffff', height: 44 })
+    if (settings.autoDeleteEnabled) await runAutoDelete()
     await notifyChanged()
     return settings
   })
@@ -202,9 +236,11 @@ else {
     registerIpc()
     createWindow()
     await startWatcher()
+    await runAutoDelete()
+    startAutoDeleteSchedule()
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
   }).catch(reportStartupFailure)
 }
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
-app.on('before-quit', () => { void watcher?.close() })
+app.on('before-quit', () => { if (autoDeleteTimer) clearInterval(autoDeleteTimer); void watcher?.close() })

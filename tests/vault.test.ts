@@ -4,8 +4,18 @@ import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import { VaultService } from '../src/main/vault'
 import { createPreview } from '../src/main/preview'
+import { AUTO_DELETE_DAYS, isAutoDeleteCandidate } from '../src/main/retention'
+import type { VaultItem } from '../src/shared/types'
 
 describe('VaultService', () => {
+  it('only auto-deletes unkept items once they reach 14 days', () => {
+    const now = Date.UTC(2026, 9, 19)
+    const item = { id: 'old-temp', path: 'D:\\TempVault\\storage\\Temporary\\Documents\\2026-10\\old.txt', name: 'old.txt', extension: 'txt', category: 'Documents', status: 'temporary', size: 1, modifiedAt: now, addedAt: now - AUTO_DELETE_DAYS * 86_400_000 } satisfies VaultItem
+    expect(isAutoDeleteCandidate(item, now)).toBe(true)
+    expect(isAutoDeleteCandidate({ ...item, id: 'new-temp', addedAt: now - 13 * 86_400_000 }, now)).toBe(false)
+    expect(isAutoDeleteCandidate({ ...item, id: 'kept', status: 'kept' }, now)).toBe(false)
+  })
+
   it('sorts ingested files, resolves collisions, and changes status', async () => {
     const sandbox = await mkdtemp(join(tmpdir(), 'tempvault-test-'))
     const service = new VaultService(join(sandbox, 'vault'))

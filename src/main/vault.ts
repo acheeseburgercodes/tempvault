@@ -43,7 +43,7 @@ export class VaultService {
 
   async initialize(): Promise<void> {
     await Promise.all([this.inbox, this.temporary, this.kept].map((path) => mkdir(path, { recursive: true })))
-    if (!existsSync(this.configPath)) await this.saveSettings({ storageRoot: this.root, staleDays: 7, launchAtStartup: false, theme: 'dark', agentModel: 'tempvault-agent', accentColor: '#d6c7b2', backgroundColor: '#080a0b', gradientEnabled: true, gradientColor: '#17120f', secondaryColor: '#463f37', autoPreview: true, windowOpacity: 0.72 })
+    if (!existsSync(this.configPath)) await this.saveSettings({ storageRoot: this.root, staleDays: 7, launchAtStartup: false, theme: 'dark', agentModel: 'tempvault-agent', accentColor: '#d6c7b2', backgroundColor: '#080a0b', gradientEnabled: true, gradientColor: '#17120f', secondaryColor: '#463f37', autoPreview: true, autoDeleteEnabled: false, windowOpacity: 0.72 })
   }
 
   async getSettings(): Promise<VaultSettings> {
@@ -62,10 +62,11 @@ export class VaultService {
         gradientColor: validColor(parsed.gradientColor, parsed.theme === 'light' ? '#ede6dc' : '#17120f'),
         secondaryColor: validColor(parsed.secondaryColor, parsed.theme === 'light' ? '#d8cdc0' : '#463f37'),
         autoPreview: parsed.autoPreview !== false,
+        autoDeleteEnabled: parsed.autoDeleteEnabled === true,
         windowOpacity: typeof parsed.windowOpacity === 'number' ? Math.max(0.45, Math.min(0.9, parsed.windowOpacity)) : 0.72
       }
     } catch {
-      return { storageRoot: this.root, staleDays: 7, launchAtStartup: false, theme: 'dark', agentModel: 'tempvault-agent', accentColor: '#d6c7b2', backgroundColor: '#080a0b', gradientEnabled: true, gradientColor: '#17120f', secondaryColor: '#463f37', autoPreview: true, windowOpacity: 0.72 }
+      return { storageRoot: this.root, staleDays: 7, launchAtStartup: false, theme: 'dark', agentModel: 'tempvault-agent', accentColor: '#d6c7b2', backgroundColor: '#080a0b', gradientEnabled: true, gradientColor: '#17120f', secondaryColor: '#463f37', autoPreview: true, autoDeleteEnabled: false, windowOpacity: 0.72 }
     }
   }
 
@@ -226,7 +227,7 @@ export class VaultService {
               status,
               size: entry.isDirectory() ? await directorySize(path) : info.size,
               modifiedAt: info.mtimeMs,
-              addedAt: info.birthtimeMs || info.ctimeMs
+              addedAt: Math.max(info.birthtimeMs, info.ctimeMs)
             })
           } catch { /* unreadable item */ }
         }
