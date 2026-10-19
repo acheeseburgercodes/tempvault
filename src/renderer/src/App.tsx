@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CATEGORIES, type AgentAnswer, type AgentStatus, type Category, type FilePreview, type OperationResult, type VaultItem, type VaultSnapshot } from '../../shared/types'
+import vaultLogoBlack from './assets/vault-logo-black.png'
+import vaultLogoWhite from './assets/vault-logo-white.png'
 
 type View = 'all' | 'temporary' | 'kept' | 'stale' | 'folders'
 type SortKey = 'name' | 'category' | 'size' | 'modifiedAt'
@@ -170,12 +172,12 @@ export default function App(): React.JSX.Element {
     setRailSize((current) => ({ width: Math.max(310, Math.min(window.innerWidth - 760, current.width + horizontal)), height: Math.max(320, Math.min(window.innerHeight - 60, current.height + vertical)) }))
   }
 
-  if (!snapshot) return <div className="loading"><div className="vault-mark">TV</div><span>OPENING VAULT</span></div>
+  if (!snapshot) return <div className="loading"><div className="vault-mark"><img src={vaultLogoWhite} alt="" /></div><span>OPENING VAULT</span></div>
   const selectedItems = snapshot.items.filter((item) => selected.has(item.id))
 
   return (
     <div className="app-shell" style={{ '--rail-width': `${railSize.width}px`, '--rail-height': `${railSize.height}px` } as React.CSSProperties} onDragOver={(event) => { if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDraggingFiles(true) } }} onDragLeave={(event) => { if (event.currentTarget === event.target) setDraggingFiles(false) }} onDrop={(event) => { if (event.dataTransfer.files.length) void handleFileDrop(event) }}>
-      <header className="titlebar"><div className="brand"><span className="vault-mark small">TV</span><span>TEMPVAULT</span><em>LOCAL ONLY</em></div><div className="title-actions"><button title="Ask the local agent" onClick={() => setPanel('agent')}>AI</button><button title="Toggle light mode" onClick={() => { const theme = snapshot.settings.theme === 'dark' ? 'light' : 'dark'; void window.tempVault.updateSettings({ theme, backgroundColor: theme === 'light' ? '#f4efe7' : '#000000', gradientColor: theme === 'light' ? '#dfe8ee' : '#17120f', secondaryColor: theme === 'light' ? '#6c5ce7' : '#463f37' }).then(refresh) }}>{snapshot.settings.theme === 'dark' ? '☼' : '◐'}</button></div></header>
+      <header className="titlebar"><div className="brand"><span className="vault-mark small"><img src={snapshot.settings.theme === 'dark' ? vaultLogoWhite : vaultLogoBlack} alt="TempVault" /></span><span>TEMPVAULT</span><em>LOCAL ONLY</em></div><div className="title-actions"><button title="Ask the local agent" onClick={() => setPanel('agent')}>AI</button><button title="Toggle light mode" onClick={() => { const theme = snapshot.settings.theme === 'dark' ? 'light' : 'dark'; void window.tempVault.updateSettings({ theme, backgroundColor: theme === 'light' ? '#f4efe7' : '#000000', gradientColor: theme === 'light' ? '#dfe8ee' : '#17120f', secondaryColor: theme === 'light' ? '#6c5ce7' : '#463f37' }).then(refresh) }}>{snapshot.settings.theme === 'dark' ? '☼' : '◐'}</button></div></header>
       <aside className="sidebar">
         <div className="nav-section"><span>LIBRARY</span><Nav active={view === 'all'} label="All files" count={snapshot.items.length} glyph="01" onClick={() => setView('all')} /><Nav active={view === 'temporary'} label="Temporary" count={snapshot.totals.temporary} glyph="02" onClick={() => setView('temporary')} /><Nav active={view === 'kept'} label="Kept" count={snapshot.totals.kept} glyph="03" onClick={() => setView('kept')} /><Nav active={view === 'stale'} label="Review" count={snapshot.totals.stale} glyph="04" onClick={() => setView('stale')} /><Nav active={view === 'folders'} label="Type folders" count={buildFolderGroups(snapshot.items).length} glyph="05" onClick={() => setView('folders')} /></div>
         <div className="nav-section"><span>TOOLS</span><button className={`nav-item ${panel === 'preview' ? 'active' : ''}`} onClick={() => setPanel('preview')}><i>PV</i><b>Previews</b><small>{previewOrder.length}</small></button><button className={`nav-item ${panel === 'agent' ? 'active' : ''}`} onClick={() => setPanel('agent')}><i>AI</i><b>File agent</b><small>LOCAL</small></button><button className="nav-item" onClick={() => void window.tempVault.openInbox()}><i>IN</i><b>Watched inbox</b></button></div>

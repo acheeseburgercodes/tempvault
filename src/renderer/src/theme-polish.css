@@ -116,3 +116,28 @@
 .color-preset-control .color-input {
   min-height: 28px;
 }
+
+.bulk button {
+  border-radius: 8px;
+}
+
+.brand .vault-mark.small {
+  width: 28px;
+  height: 28px;
+  padding: 2px;
+  border-radius: 8px;
+  background: transparent;
+}
+
+.vault-mark img {
+  display: block;
+  width: 78%;
+  height: 78%;
+  margin: auto;
+  object-fit: contain;
+}
+
+.brand .vault-mark.small img {
+  width: 100%;
+  height: 100%;
+}
