@@ -80,3 +80,39 @@
 :root[data-theme="light"] .glass-folder-card.open {
   background: linear-gradient(145deg, color-mix(in srgb, var(--folder-color) 22%, rgba(255, 255, 255, .68)), rgba(255, 250, 244, .62)) !important;
 }
+
+.color-preset-control {
+  min-width: 244px;
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.color-preset-swatches {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.color-preset-swatches button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--preset-color) 64%, var(--line-strong));
+  border-radius: 7px;
+  background: var(--preset-color);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .32);
+}
+
+.color-preset-swatches button:hover {
+  transform: translateY(-2px) scale(1.08);
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--preset-color) 38%, transparent);
+}
+
+.color-preset-swatches button.active {
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text), 0 6px 16px color-mix(in srgb, var(--preset-color) 38%, transparent);
+}
+
+.color-preset-control .color-input {
+  min-height: 28px;
+}
