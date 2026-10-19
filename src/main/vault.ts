@@ -60,7 +60,7 @@ export class VaultService {
         backgroundColor: validColor(parsed.backgroundColor, parsed.theme === 'light' ? '#ffffff' : '#000000'),
         gradientEnabled: parsed.gradientEnabled !== false,
         gradientColor: validColor(parsed.gradientColor, parsed.theme === 'light' ? '#ede6dc' : '#17120f'),
-        secondaryColor: validColor(parsed.secondaryColor, parsed.theme === 'light' ? '#d8cdc0' : '#463f37'),
+        secondaryColor: validColor(parsed.secondaryColor, parsed.theme === 'light' ? '#6c5ce7' : '#463f37'),
         autoPreview: parsed.autoPreview !== false,
         autoDeleteEnabled: parsed.autoDeleteEnabled === true,
         windowOpacity: typeof parsed.windowOpacity === 'number' ? Math.max(0.45, Math.min(0.9, parsed.windowOpacity)) : 0.72

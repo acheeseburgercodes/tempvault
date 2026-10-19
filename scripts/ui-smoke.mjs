@@ -24,6 +24,9 @@ function evaluate(expression) {
   })
 }
 
+await evaluate(`localStorage.removeItem('tempvault:preview-widget-sizes'); location.reload(); true`)
+await new Promise((resolve) => setTimeout(resolve, 1_200))
+
 const result = await evaluate(`(async () => {
   const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const rows = [...document.querySelectorAll('.record-row')]
@@ -42,6 +45,8 @@ const result = await evaluate(`(async () => {
   const sidebarStyle = getComputedStyle(document.querySelector('.sidebar'))
   const workspaceStyle = getComputedStyle(document.querySelector('.workspace'))
   const shellStyle = getComputedStyle(document.querySelector('.app-shell'))
+  const configuredSecondary = getComputedStyle(document.documentElement).getPropertyValue('--secondary').trim().toLowerCase()
+  if (document.documentElement.dataset.theme === 'light' && ['#463f37', '#d8cdc0', '#dddddd'].includes(configuredSecondary)) throw new Error('Light mode still uses the legacy neutral secondary color')
   if (sidebarStyle.backdropFilter !== 'none') throw new Error('Legacy sidebar glass blur is still enabled')
   if (getComputedStyle(document.querySelector('.sidebar'), '::before').display !== 'none') throw new Error('Animated glass overlay is still visible')
   if ((shellStyle.backgroundColor === 'rgba(0, 0, 0, 0)' && shellStyle.backgroundImage === 'none') || (workspaceStyle.backgroundColor === 'rgba(0, 0, 0, 0)' && workspaceStyle.backgroundImage === 'none')) throw new Error('Primary background or gradient canvas is missing')
@@ -192,6 +197,10 @@ const result = await evaluate(`(async () => {
   await pause(450)
   const folderCards = [...document.querySelectorAll('.glass-folder-card')]
   if (rows.length && !folderCards.length) throw new Error('Glass folder cards did not render')
+  if (folderCards.length) {
+    const folderGlassStyle = getComputedStyle(folderCards[0].querySelector('.folder-glass'))
+    if (folderGlassStyle.backdropFilter === 'none' || folderGlassStyle.backgroundImage === 'none') throw new Error('Folder cards lost their vivid translucent treatment')
+  }
   if (rows.some((row) => row.querySelector('.record-name strong')?.textContent?.toLowerCase().endsWith('.pdf')) && !folderCards.some((card) => card.textContent.includes('PDFs'))) throw new Error('PDF files were not sorted into their own folder')
   if (rows.some((row) => /\.(doc|docx|txt|md)$/i.test(row.querySelector('.record-name strong')?.textContent || '')) && !folderCards.some((card) => card.textContent.includes('Word & text'))) throw new Error('Document files were not sorted into their own folder')
   folderCards[0]?.querySelector('.folder-cover')?.click()
