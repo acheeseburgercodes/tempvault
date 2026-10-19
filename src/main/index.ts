@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
 import { join } from 'node:path'
 import { appendFileSync, existsSync, mkdirSync } from 'node:fs'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
@@ -49,7 +49,7 @@ function createWindow(): void {
     height: 820,
     minWidth: 980,
     minHeight: 640,
-    icon: join(__dirname, '../../build/icon.ico'),
+    icon: windowIconPath(),
     show: false,
     backgroundColor: '#00000000',
     transparent: true,
@@ -81,6 +81,14 @@ function createWindow(): void {
 
   if (is.dev && process.env.ELECTRON_RENDERER_URL) mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
   else mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+}
+
+function windowIconPath(): string {
+  return join(__dirname, `../../build/${nativeTheme.shouldUseDarkColors ? 'icon-dark.ico' : 'icon-light.ico'}`)
+}
+
+function updateWindowIcon(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setIcon(windowIconPath())
 }
 
 async function notifyChanged(): Promise<void> {
@@ -234,6 +242,7 @@ else {
     await service.initialize()
     await service.sortInbox()
     registerIpc()
+    nativeTheme.on('updated', updateWindowIcon)
     createWindow()
     await startWatcher()
     await runAutoDelete()
@@ -243,4 +252,4 @@ else {
 }
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
-app.on('before-quit', () => { if (autoDeleteTimer) clearInterval(autoDeleteTimer); void watcher?.close() })
+app.on('before-quit', () => { nativeTheme.removeListener('updated', updateWindowIcon); if (autoDeleteTimer) clearInterval(autoDeleteTimer); void watcher?.close() })

@@ -30,6 +30,7 @@ await new Promise((resolve) => setTimeout(resolve, 1_200))
 const result = await evaluate(`(async () => {
   const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const rows = [...document.querySelectorAll('.record-row')]
+  if (!document.querySelector('.brand .vault-mark img')) throw new Error('Title bar does not use the TempVault logo asset')
   const header = document.querySelector('.record-header')
   const rowsAreSeparate = rows.every((row) => !header?.contains(row))
   const rowsDoNotOverflow = rows.every((row) => row.scrollWidth <= row.clientWidth + 1)
@@ -88,6 +89,8 @@ const result = await evaluate(`(async () => {
     await pause(100)
     rows[0].click()
     await pause(500)
+    const bulkButtons = [...document.querySelectorAll('.bulk button')]
+    if (!bulkButtons.length || bulkButtons.some((button) => parseFloat(getComputedStyle(button).borderRadius) < 6)) throw new Error('Selection action buttons are not rounded')
     const quickPreview = document.querySelector('.quick-preview')
     if (!quickPreview || !quickPreview.querySelector('.quick-preview-content')) throw new Error('Automatic quick preview did not open for the selected file')
     quickPreview.querySelector('button[title="Close quick preview"]').click()

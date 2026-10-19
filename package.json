@@ -50,6 +50,8 @@
     "files": [
       "out/**/*",
       "build/icon.ico",
+      "build/icon-light.ico",
+      "build/icon-dark.ico",
       "package.json"
     ],
     "win": {
