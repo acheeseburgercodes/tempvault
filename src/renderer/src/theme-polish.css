@@ -1,0 +1,82 @@
+/* Final theme layer: a softer light canvas and vivid, translucent type folders. */
+:root[data-theme="light"] {
+  --panel: #fffaf4;
+  --panel-2: #f1e9df;
+  --line: #d7cec3;
+  --line-strong: #9d9285;
+  --text: #171512;
+  --muted: #655f58;
+  --faint: #aaa096;
+}
+
+:root[data-theme="light"] .app-shell {
+  background:
+    radial-gradient(circle at 12% 6%, color-mix(in srgb, var(--accent) 17%, transparent), transparent 30%),
+    radial-gradient(circle at 88% 90%, color-mix(in srgb, var(--secondary, #d8cdc0) 30%, transparent), transparent 36%),
+    linear-gradient(135deg, color-mix(in srgb, var(--bg) 78%, #fff7ed), color-mix(in srgb, var(--bg-gradient, #dfe8ee) 72%, #f7efe5)) !important;
+}
+
+:root[data-theme="light"] .workspace {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .3), rgba(255, 255, 255, .08) 48%, transparent) !important;
+}
+
+:root[data-theme="light"] .titlebar {
+  background: color-mix(in srgb, var(--bg) 88%, #fffaf4) !important;
+}
+
+:root[data-theme="light"] .records,
+:root[data-theme="light"] .metrics article,
+:root[data-theme="light"] .right-rail {
+  background: color-mix(in srgb, var(--panel) 90%, transparent) !important;
+}
+
+:root[data-theme="light"] .sidebar {
+  background: color-mix(in srgb, var(--secondary, #6c5ce7) 18%, #fffaf4) !important;
+  border-right-color: color-mix(in srgb, var(--secondary, #6c5ce7) 46%, var(--line)) !important;
+}
+
+:root[data-theme="light"] .sidebar .nav-item.active,
+:root[data-theme="light"] .rail-tabs button.active {
+  background: color-mix(in srgb, var(--secondary, #6c5ce7) 34%, #fffaf4) !important;
+  border-color: color-mix(in srgb, var(--secondary, #6c5ce7) 72%, var(--line)) !important;
+  color: #1d1740 !important;
+}
+
+:root[data-theme="light"] .record-row.active,
+:root[data-theme="light"] .bulk {
+  background: color-mix(in srgb, var(--secondary, #6c5ce7) 16%, #fffaf4) !important;
+  color: #1d1740 !important;
+}
+
+:root[data-theme="light"] .quick-preview > header,
+:root[data-theme="light"] .preview-widget > header {
+  background: color-mix(in srgb, var(--secondary, #6c5ce7) 24%, #fffaf4) !important;
+}
+
+.folder-glass {
+  background: linear-gradient(145deg, color-mix(in srgb, var(--folder-color) 42%, transparent), color-mix(in srgb, var(--panel) 70%, transparent)) !important;
+  border-color: color-mix(in srgb, var(--folder-color) 72%, var(--line)) !important;
+  backdrop-filter: blur(20px) saturate(1.75) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(1.75) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .28), inset 0 -1px color-mix(in srgb, var(--folder-color) 30%, rgba(0, 0, 0, .26)), 0 16px 30px rgba(0, 0, 0, .16) !important;
+}
+
+.folder-tab {
+  background: linear-gradient(145deg, color-mix(in srgb, var(--folder-color) 56%, var(--panel)), color-mix(in srgb, var(--folder-color) 30%, var(--panel))) !important;
+}
+
+.glass-folder-card.open {
+  background: linear-gradient(145deg, color-mix(in srgb, var(--folder-color) 24%, transparent), color-mix(in srgb, var(--panel) 74%, transparent)) !important;
+  backdrop-filter: blur(18px) saturate(1.55) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(1.55) !important;
+  box-shadow: 0 18px 42px color-mix(in srgb, var(--folder-color) 18%, transparent) !important;
+}
+
+:root[data-theme="light"] .folder-glass {
+  background: linear-gradient(145deg, color-mix(in srgb, var(--folder-color) 36%, rgba(255, 255, 255, .54)), rgba(255, 250, 244, .58)) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .82), inset 0 -1px color-mix(in srgb, var(--folder-color) 24%, rgba(76, 65, 52, .18)), 0 16px 32px color-mix(in srgb, var(--folder-color) 20%, rgba(55, 45, 35, .12)) !important;
+}
+
+:root[data-theme="light"] .glass-folder-card.open {
+  background: linear-gradient(145deg, color-mix(in srgb, var(--folder-color) 22%, rgba(255, 255, 255, .68)), rgba(255, 250, 244, .62)) !important;
+}
