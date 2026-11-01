@@ -1,6 +1,6 @@
 {
   "name": "tempvault",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "A private, local-first temporary file manager for Windows.",
   "main": "out/main/index.js",
   "author": "acheeseburgercodes",
@@ -36,7 +36,8 @@
     "officeparser": "^8.1.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "word-extractor": "^1.0.4"
+    "word-extractor": "^1.0.4",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@cyclonedx/cyclonedx-npm": "^6.0.1",
