@@ -21,7 +21,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "postinstall": "node node_modules/electron/install.js",
-    "package": "npm run build && electron-builder --win nsis portable",
+    "package": "npm run build && electron-builder --win nsis portable --publish never",
     "sbom": "node -e \"require('fs').mkdirSync('release',{recursive:true})\" && cyclonedx-npm --package-lock-only --omit dev --output-reproducible --spec-version 1.6 --output-format JSON --output-file release/TempVault-SBOM.cdx.json",
     "verify": "npm run typecheck && npm test && npm run build && npm audit --omit=dev --audit-level=high",
     "preview": "electron-vite preview"
