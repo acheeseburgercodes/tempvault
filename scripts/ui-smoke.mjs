@@ -107,7 +107,8 @@ const result = await evaluate(`(async () => {
     const grid = document.querySelector('.preview-grid')
     const slots = [...grid.querySelectorAll('.preview-grid-slot')]
     if (getComputedStyle(grid).display !== 'grid' || getComputedStyle(grid).gridTemplateColumns.split(' ').length !== 12 || slots.length !== widgets.length) throw new Error('Twelve-column resizable widget grid did not render')
-    if (slots.some((slot) => Number(getComputedStyle(slot).getPropertyValue('--widget-span')) !== 6)) throw new Error('Pinned previews do not default to two equal half-width panels')
+    const slotSpans = slots.map((slot) => Number(getComputedStyle(slot).getPropertyValue('--widget-span')))
+    if (slotSpans.some((span) => span !== 6)) throw new Error('Pinned previews do not default to two equal half-width panels: ' + slotSpans.join(', '))
     const resizeHandle = widgets[0].querySelector('.widget-resize-handle')
     if (!resizeHandle) throw new Error('Per-panel resize handle is missing')
     const sizeBefore = widgets[0].getBoundingClientRect()

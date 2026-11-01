@@ -72,6 +72,8 @@ function createWindow(): void {
     if (url.startsWith('https://')) void shell.openExternal(url)
     return { action: 'deny' }
   })
+  mainWindow.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false))
+  mainWindow.webContents.on('will-navigate', (event) => event.preventDefault())
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (!(input.control || input.meta) || input.type !== 'keyDown') return
     if (input.key === '+' || input.key === '=') { event.preventDefault(); applyZoom('in') }

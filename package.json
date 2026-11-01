@@ -1,10 +1,18 @@
 {
   "name": "tempvault",
-  "version": "1.0.1",
-  "description": "A private, local-first temporary file vault for Windows.",
+  "version": "1.1.0",
+  "description": "A private, local-first temporary file manager for Windows.",
   "main": "out/main/index.js",
   "author": "acheeseburgercodes",
   "license": "MIT",
+  "homepage": "https://github.com/acheeseburgercodes/tempvault-cb#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/acheeseburgercodes/tempvault-cb.git"
+  },
+  "bugs": {
+    "url": "https://github.com/acheeseburgercodes/tempvault-cb/issues"
+  },
   "type": "module",
   "scripts": {
     "dev": "electron-vite dev",
@@ -12,7 +20,10 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "postinstall": "node node_modules/electron/install.js",
     "package": "npm run build && electron-builder --win nsis portable",
+    "sbom": "node -e \"require('fs').mkdirSync('release',{recursive:true})\" && cyclonedx-npm --package-lock-only --omit dev --output-reproducible --spec-version 1.6 --output-format JSON --output-file release/TempVault-SBOM.cdx.json",
+    "verify": "npm run typecheck && npm test && npm run build && npm audit --omit=dev --audit-level=high",
     "preview": "electron-vite preview"
   },
   "dependencies": {
@@ -28,21 +39,24 @@
     "word-extractor": "^1.0.4"
   },
   "devDependencies": {
+    "@cyclonedx/cyclonedx-npm": "^6.0.1",
     "@types/node": "^24.5.2",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "@types/word-extractor": "^1.0.6",
     "@vitejs/plugin-react": "^5.0.3",
-    "electron": "^44.7.0",
+    "electron": "^44.10.1",
     "electron-builder": "^26.0.12",
     "electron-vite": "^4.0.1",
     "typescript": "^5.9.2",
     "vite": "^7.1.7",
-    "vitest": "^3.2.4"
+    "vitest": "^5.0.5"
   },
   "build": {
     "appId": "com.tempvault.app",
     "productName": "TempVault",
+    "copyright": "Copyright © 2026 TempVault contributors",
+    "asar": true,
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -57,6 +71,7 @@
     "win": {
       "icon": "build/icon.ico",
       "executableName": "TempVault",
+      "requestedExecutionLevel": "asInvoker",
       "target": [
         "nsis",
         "portable"
@@ -76,5 +91,12 @@
     "portable": {
       "artifactName": "TempVault-Portable-${version}-${arch}.${ext}"
     }
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true,
+    "electron-winstaller": false,
+    "libxmljs2": false,
+    "tesseract.js": false
   }
 }
