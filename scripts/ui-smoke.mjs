@@ -24,7 +24,23 @@ function evaluate(expression) {
   })
 }
 
-await evaluate(`localStorage.removeItem('tempvault:preview-widget-sizes'); location.reload(); true`)
+function execute(method, params = {}) {
+  return new Promise((resolve, reject) => {
+    const id = ++sequence
+    const listener = (event) => {
+      const message = JSON.parse(event.data)
+      if (message.id !== id) return
+      socket.removeEventListener('message', listener)
+      if (message.error) reject(new Error(message.error.message))
+      else resolve(message.result)
+    }
+    socket.addEventListener('message', listener)
+    socket.send(JSON.stringify({ id, method, params }))
+  })
+}
+
+await execute('Page.addScriptToEvaluateOnNewDocument', { source: `localStorage.removeItem('tempvault:preview-widget-sizes')` })
+await execute('Page.reload', { ignoreCache: true })
 await new Promise((resolve) => setTimeout(resolve, 1_200))
 
 const result = await evaluate(`(async () => {
