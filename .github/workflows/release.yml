@@ -58,7 +58,7 @@ jobs:
               Start-Sleep -Milliseconds 500
             }
             if (-not $ready) { throw 'Packaged TempVault renderer did not start' }
-            node scripts/ui-smoke.mjs 9224
+            node scripts/package-smoke.mjs 9224
           } finally {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
           }
