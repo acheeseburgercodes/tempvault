@@ -1,0 +1,91 @@
+name: Build Windows release
+
+on:
+  push:
+    tags:
+      - v*
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Verify tag and package versions
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $packageVersion = (Get-Content package.json | ConvertFrom-Json).version
+          if ("v$packageVersion" -ne "${{ github.ref_name }}") {
+            throw "Tag ${{ github.ref_name }} does not match package version $packageVersion"
+          }
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Verify source and dependencies
+        run: npm run verify
+
+      - name: Build Windows installer and portable executable
+        run: npm run package
+
+      - name: Create reproducible SBOM
+        run: npm run sbom
+
+      - name: Create SHA-256 manifest
+        shell: pwsh
+        run: |
+          $files = @(
+            Get-ChildItem release/TempVault-Setup-*-x64.exe
+            Get-ChildItem release/TempVault-Portable-*-x64.exe
+            Get-Item release/TempVault-SBOM.cdx.json
+          )
+          $lines = foreach ($file in $files) {
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash.ToLowerInvariant()
+            "$hash  $($file.Name)"
+          }
+          $lines | Set-Content -Encoding utf8NoBOM release/SHA256SUMS.txt
+
+      - name: Upload unsigned release evidence
+        id: upload-release
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: tempvault-${{ github.ref_name }}-unsigned
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            release/TempVault-Setup-*-x64.exe
+            release/TempVault-Portable-*-x64.exe
+            release/TempVault-SBOM.cdx.json
+            release/SHA256SUMS.txt
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          gh release create "${{ github.ref_name }}" `
+            (Get-ChildItem release/TempVault-Setup-*-x64.exe).FullName `
+            (Get-ChildItem release/TempVault-Portable-*-x64.exe).FullName `
+            release/TempVault-SBOM.cdx.json `
+            release/SHA256SUMS.txt `
+            --repo "${{ github.repository }}" `
+            --title "TempVault $version" `
+            --notes-file docs/RELEASE_NOTES_1.1.0.md `
+            --verify-tag
